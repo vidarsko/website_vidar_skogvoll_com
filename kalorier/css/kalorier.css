@@ -1,0 +1,164 @@
+/* Kaloriappen: bare det som ikke finnes i /css/style.css. */
+main, #content { grid-template-columns: minmax(0, 1fr); }
+#content { display: grid; gap: 16px; }
+#content[hidden], .empty[hidden], [hidden] { display: none !important; }
+
+/* Dagen: navigasjon og sum */
+.day { display: grid; gap: 16px; }
+.day-nav { display: flex; align-items: center; gap: 8px; }
+.day-head { display: grid; min-width: 0; flex: 1; text-align: center; }
+.day-head h1 { font-size: 28px; font-weight: 800; line-height: 1.2; }
+.day-date { font-size: 14px; color: var(--text-muted); }
+.nav-btn {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+  border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); cursor: pointer;
+}
+.nav-btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+.nav-btn:disabled, .btn:disabled { opacity: 0.4; cursor: default; }
+.btn:disabled:hover { border-color: var(--border); background: var(--surface); }
+.btn-primary:disabled:hover { background: var(--text); }
+
+.day-sum { display: grid; gap: 8px; }
+.sum-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.sum-netto { font-size: 44px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.sum-of { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.sum-parts { font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.meter { height: 10px; border-radius: var(--radius-pill); background: var(--grid); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: var(--radius-pill); background: var(--success); transition: width 0.2s; }
+.meter-fill.over { background: var(--danger); }
+
+/* Over/under: farge og ord sammen, aldri farge alene */
+.status { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.status.under { color: var(--success); }
+.status.over { color: var(--danger); }
+.sum-line .status { margin-left: auto; font-size: 18px; }
+
+/* Rutenettet med kategorier */
+.cats { display: grid; gap: 8px; }
+.cats-title { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
+@media (min-width: 700px) { .cat-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
+.cat {
+  display: grid; justify-items: center; align-content: start; gap: 6px; min-width: 0;
+  padding: 12px 4px 10px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  transition: border-color 0.15s, background 0.15s;
+}
+.cat:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.cat:active { background: var(--surface-hover); }
+.cat-icon { display: grid; place-items: center; height: 40px; color: var(--text); }
+.cat-name {
+  font-size: 13px; line-height: 1.25; text-align: center; min-height: 2.5em; max-width: 100%;
+  hyphens: manual; overflow-wrap: anywhere;
+}
+#grid-trening .cat-icon { color: var(--accent); }
+
+/* Loggen for dagen */
+.entries { list-style: none; display: grid; }
+.entry {
+  display: grid; grid-template-columns: 3.2em 28px 1fr auto; align-items: center; gap: 12px;
+  width: 100%; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--border);
+  background: transparent; text-align: left; cursor: pointer; border-radius: 6px;
+}
+.entry:hover { background: var(--surface-hover); }
+.e-time { font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.e-icon { display: grid; place-items: center; }
+.e-name { display: grid; min-width: 0; }
+.e-name small { font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.e-kcal { font-weight: 700; font-variant-numeric: tabular-nums; }
+.e-kcal.neg { color: var(--accent); }
+
+/* Uka */
+.week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.wd {
+  display: grid; justify-items: center; gap: 2px; padding: 8px 2px; min-width: 0; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+}
+.wd:hover:not(:disabled) { background: var(--surface-hover); }
+.wd:disabled { opacity: 0.4; cursor: default; }
+.wd[aria-current="date"] { border-color: var(--text); border-width: 2px; padding: 7px 1px; }
+.wd-name { font-size: 13px; color: var(--text-muted); }
+.wd-val { font-weight: 700; font-size: 15px; }
+.wd-budget { font-size: 11px; color: var(--text-muted); }
+.wd-status { font-size: 12px; min-height: 1.4em; }
+.wd-status:not(.over):not(.under) { color: var(--text-muted); font-weight: 400; font-size: 11px; }
+
+/* Ukene før */
+table.weeks { width: 100%; font-size: 14px; }
+table.weeks td, table.weeks th { padding: 6px 12px 6px 0; }
+table.weeks tr.muted td { color: var(--text-muted); }
+.link {
+  border: 0; background: none; padding: 0; cursor: pointer; color: var(--accent); font-weight: 600;
+}
+.link:hover { text-decoration: underline; }
+.more { margin-top: 12px; }
+
+/* Import */
+.import summary { cursor: pointer; font-weight: 600; width: fit-content; }
+.import-body { display: grid; gap: 12px; margin-top: 16px; }
+.import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.field { display: grid; gap: 6px; }
+.field-label { font-size: 14px; color: var(--text-muted); }
+.field-label output { color: var(--text); font-weight: 700; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.field input[type="text"], .field input[type="time"] {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 10px 12px; min-height: 44px;
+}
+.field input[type="file"] { font-size: 14px; }
+.field input[type="range"] { width: 100%; height: 44px; accent-color: var(--accent); cursor: pointer; }
+
+/* Dialogen for én oppføring */
+.entry-dialog {
+  margin: auto; width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+  padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.entry-dialog::backdrop { background: rgba(10, 9, 8, 0.45); }
+.entry-dialog form { display: grid; gap: 14px; }
+.entry-head { display: grid; grid-template-columns: 44px 1fr 40px; align-items: center; gap: 12px; }
+.entry-head h2 { font-size: 20px; font-weight: 700; line-height: 1.25; }
+.entry-icon { display: grid; place-items: center; }
+.entry-info { font-size: 13px; color: var(--text-muted); }
+.close {
+  display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--radius-pill);
+  background: transparent; cursor: pointer; color: var(--text-muted);
+}
+.close:hover { background: var(--surface-hover); color: var(--text); }
+.entry-conv {
+  font-size: 15px; font-weight: 600; padding: 8px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+}
+.entry-kcal { font-size: 40px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.entry-kcal span { display: inline-block; min-width: 3.2ch; }
+.field-time { max-width: 160px; }
+.entry-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.entry-actions .btn { min-height: 44px; }
+.btn-danger { color: var(--danger); margin-right: auto; }
+.btn-danger:hover { border-color: var(--danger); }
+
+/* Melding nederst, oppå innholdet */
+.toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+  padding: 10px 10px 10px 16px; font-size: 14px;
+  background: var(--text); color: var(--bg); border-radius: var(--radius-pill);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+}
+.toast .btn { background: transparent; color: var(--bg); border-color: currentColor; }
+
+@media (max-width: 600px) {
+  .day-head h1 { font-size: 22px; }
+  .sum-netto { font-size: 36px; }
+  .week-days { gap: 3px; }
+  .wd { padding: 6px 0; }
+  .wd[aria-current="date"] { padding: 5px 0; }
+  .wd-val { font-size: 13px; }
+  .wd-status { font-size: 10.5px; letter-spacing: -0.02em; }
+  .wd-budget { display: none; }
+  table.weeks { font-size: 13px; }
+  table.weeks td, table.weeks th { padding-right: 8px; }
+  #today { display: none; }
+}
