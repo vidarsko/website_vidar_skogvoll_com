@@ -6,7 +6,7 @@
 // fra tools/kalorier_oppsett.json av workflowen kalorier.yml.
 //
 // Matloggen ligger i samlingen «matlogg», én oppføring per dokument:
-//   t (tid), kat (kategori-id), mengde (i kategoriens enhet), kcal (+ mat, − trening, netto),
+//   t (tid), kat (kategori-id), kcal (+ mat, − trening, netto),
 //   notat (valgfritt; Lose It-navnet på importerte rader), kilde ('app' | 'loseit'), lagret.
 // Lose It-historikken ble importert én gang 2026-11-16; importen ble fjernet etterpå (se git-historikken).
 // Se kalorier_private/AGENTS.md.
@@ -24,7 +24,7 @@ const WEEKS_STEP = 10;
 
 let setup = null;
 const cats = new Map();
-let entries = []; // { id, t: Date, kat, mengde, kcal, notat, kilde }
+let entries = []; // { id, t: Date, kat, kcal, notat, kilde }
 let loadedFrom = null;
 let day = startOfDay(new Date());
 let followToday = true; // står på «I dag»: hopp til ny dag over midnatt
@@ -79,6 +79,11 @@ function amountText(cat, m) {
   if (cat.enhet === 'kcal') return fmt0(m) + ' kcal';
   return fmtNum(m) + ' ' + (m === 1 ? cat.enhet : cat.enheter);
 }
+// Bare kcal lagres. Mengden regnes ut fra kcal og omregningen i oppsettet når den vises, så en
+// endret omregning aldri krever at gamle oppføringer skrives om (kcal står fast).
+function amountOf(cat, kcal) {
+  return Math.round((Math.abs(kcal) / cat.kcal) * 100) / 100;
+}
 function kcalOf(cat, m) {
   const k = Math.round(m * cat.kcal);
   return cat.type === 'trening' ? -k : k;
@@ -103,7 +108,7 @@ function iconSvg(cat, size) {
 
 function fromDoc(d) {
   const x = d.data();
-  return { id: d.id, t: x.t.toDate(), kat: x.kat, mengde: x.mengde, kcal: x.kcal, notat: x.notat || '', kilde: x.kilde || '' };
+  return { id: d.id, t: x.t.toDate(), kat: x.kat, kcal: x.kcal, notat: x.notat || '', kilde: x.kilde || '' };
 }
 
 async function loadSetup() {
@@ -180,7 +185,7 @@ function renderDay() {
     const name = document.createElement('span'); name.className = 'e-name';
     name.textContent = cat ? cat.navn : e.kat;
     const sub = document.createElement('small');
-    sub.textContent = [cat ? amountText(cat, e.mengde) : fmtNum(e.mengde), e.notat].filter(Boolean).join(' · ');
+    sub.textContent = [cat ? amountText(cat, amountOf(cat, e.kcal)) : '', e.notat].filter(Boolean).join(' · ');
     name.append(sub);
     const kcal = document.createElement('span'); kcal.className = 'e-kcal' + (e.kcal < 0 ? ' neg' : '');
     kcal.textContent = (e.kcal < 0 ? '−' : '') + fmt0(Math.abs(e.kcal));
@@ -318,7 +323,7 @@ function openEntry(cat, entry) {
     : `1 ${cat.enhet}${cat.str ? ' (' + cat.str + ')' : ''} = ${fmtNum(cat.kcal)} kcal${cat.type === 'trening' ? ' netto' : ''}`;
 
   const r = $('entry-range');
-  const value = entry ? entry.mengde : cat.std;
+  const value = entry ? amountOf(cat, entry.kcal) : cat.std;
   const offGrid = Math.abs(Math.round((value - cat.min) / cat.steg) * cat.steg + cat.min - value) > 1e-9;
   r.min = Math.min(cat.min, value);
   r.max = Math.max(cat.maks, value);
@@ -350,12 +355,10 @@ async function saveEntry(ev) {
   const [h, mi] = ($('entry-time').value || '12:00').split(':').map(Number);
   const base = editing ? editing.t : day;
   const t = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, mi);
-  const mengde = Number($('entry-range').value);
   const data = {
     t: Timestamp.fromDate(t),
     kat: current.id,
-    mengde: Math.round(mengde * 100) / 100,
-    kcal: kcalLocked != null ? kcalLocked : kcalOf(current, mengde),
+    kcal: kcalLocked != null ? kcalLocked : kcalOf(current, Number($('entry-range').value)),
     notat: $('entry-note').value.trim(),
     kilde: editing ? editing.kilde || 'app' : 'app',
     lagret: serverTimestamp(),
@@ -371,7 +374,7 @@ async function saveEntry(ev) {
     } else {
       id = (await addDoc(collection(db, LOG), data)).id;
     }
-    const saved = { id, t, kat: data.kat, mengde: data.mengde, kcal: data.kcal, notat: data.notat, kilde: data.kilde };
+    const saved = { id, t, kat: data.kat, kcal: data.kcal, notat: data.notat, kilde: data.kilde };
     entries.push(saved);
     render();
     const what = `${cat.navn}, ${(data.kcal < 0 ? '−' : '') + fmt0(Math.abs(data.kcal))} kcal`;
@@ -391,7 +394,7 @@ async function remove(entry, quiet) {
 
 async function restore(entry) {
   await setDoc(doc(db, LOG, entry.id), {
-    t: Timestamp.fromDate(entry.t), kat: entry.kat, mengde: entry.mengde, kcal: entry.kcal,
+    t: Timestamp.fromDate(entry.t), kat: entry.kat, kcal: entry.kcal,
     notat: entry.notat, kilde: entry.kilde, lagret: serverTimestamp(),
   });
   entries = entries.filter((e) => e.id !== entry.id).concat([entry]);
