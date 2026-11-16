@@ -6,9 +6,12 @@
 // siden viser alltid det som ligger i Firestore. Ingen nøkkel lagres noe sted; den lever i
 // minnet til fanen lukkes.
 //
-// Hvorfor ikke automatisk i bakgrunnen: Google Health-appen vår er i «Testing»-modus, og der
-// utløper refresh-nøkler etter 7 dager. En nattlig jobb ville måttet logges inn på nytt hver uke.
-// Se kalorier_private/AGENTS.md.
+// Historikken 2014-2026 fra Vidars regneark ligger også i «maalinger» (kilde «regneark» og
+// «regneark-ifttt»). Har Google en veiing samme dag, vises ikke regnearkets.
+//
+// Analysene er de fra regnearkets ark 2: trend som lokal lineær regresjon over N målinger før og
+// M etter hvert punkt (FORECAST), vektderivert som stigningstallet i samme vindu (g/dag), og
+// avvik fra trend per ukedag. Se kalorier_private/AGENTS.md.
 
 import {
   getFirestore, collection, doc, getDocs, writeBatch, query, orderBy,
@@ -43,7 +46,7 @@ async function loadRows() {
   const snap = await getDocs(query(collection(db, 'maalinger'), orderBy('t')));
   rows = snap.docs.map((d) => {
     const x = d.data();
-    return { id: d.id, type: x.type, t: x.t.toDate(), value: x.value };
+    return { id: d.id, type: x.type, t: x.t.toDate(), value: x.value, kilde: x.kilde || '' };
   });
 }
 
@@ -142,17 +145,21 @@ async function fetchPages(token, apiType, field, since, filterName) {
   return out;
 }
 
-async function sync() {
+async function sync(everything) {
   const button = $('sync');
   button.disabled = true;
-  say('Henter fra Google …');
+  $('sync-all').disabled = true;
+  say(everything ? 'Henter hele historikken fra Google … (kan ta litt tid)' : 'Henter fra Google …');
   try {
     const token = await getToken();
-    const last = rows.length ? rows[rows.length - 1].t : null;
+    const google = rows.filter((r) => !String(r.kilde).startsWith('regneark'));
+    const last = google.length ? google[google.length - 1].t : null;
     // Litt overlapp, så en veiing som kom sent inn ikke faller mellom to henting.
-    const since = last
-      ? new Date(last.getTime() - 3 * 864e5)
-      : new Date(Date.now() - FIRST_SYNC_DAYS * 864e5);
+    const since = everything
+      ? new Date('2010-01-01T00:00:00Z')
+      : last
+        ? new Date(last.getTime() - 3 * 864e5)
+        : new Date(Date.now() - FIRST_SYNC_DAYS * 864e5);
     // Hver type for seg: feiler fettprosenten, lagres vekta likevel.
     const fetched = [];
     const problems = [];
@@ -174,103 +181,233 @@ async function sync() {
     say('Klarte ikke å hente: ' + err.message);
   } finally {
     button.disabled = false;
+    $('sync-all').disabled = false;
   }
 }
 
-// ---- Visning ----
 
-const kg = (v) => v.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const dayFmt = new Intl.DateTimeFormat('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const shortFmt = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
+// ---- Analyse (regnearkets ark 2) ----
 
-function movingAverage(list, n) {
-  return list.map((p, i) => {
-    const w = list.slice(Math.max(0, i - n + 1), i + 1);
-    return { t: p.t, value: w.reduce((s, x) => s + x.value, 0) / w.length };
+const DAY = 864e5;
+const SETTINGS_KEY = 'vekt-innstillinger';
+const PERIODS = [['90', '90 dager'], ['365', '1 år'], ['730', '2 år'], ['1825', '5 år'], ['all', 'Alt']];
+const WEEKDAYS = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
+let settings = { period: '365', before: 30, after: 30 };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
+
+const dayKey = (t) => t.toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
+const isSheet = (r) => String(r.kilde).startsWith('regneark');
+
+// Vekt der regnearkets veiinger faller bort de dagene Google har en.
+function cleanWeights() {
+  const all = rows.filter((r) => r.type === 'weight');
+  const googleDays = new Set(all.filter((r) => !isSheet(r)).map((r) => dayKey(r.t)));
+  return all.filter((r) => !(isSheet(r) && googleDays.has(dayKey(r.t)))).sort((a, b) => a.t - b.t);
+}
+
+// Lokal lineær regresjon: for punkt i, tilpass en rett linje til målingene i-before … i+after.
+// trend = linjens verdi i punktet (regnearkets FORECAST), deriv = stigningstallet i g/dag (SLOPE*1000).
+function trendOf(points, before, after) {
+  const xs = points.map((p) => p.t / DAY);
+  return points.map((p, i) => {
+    const lo = Math.max(0, i - before), hi = Math.min(points.length - 1, i + after);
+    let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let j = lo; j <= hi; j++) {
+      const x = xs[j] - xs[i], y = points[j].value;
+      n++; sx += x; sy += y; sxx += x * x; sxy += x * y;
+    }
+    const den = n * sxx - sx * sx;
+    const b = den ? (n * sxy - sx * sy) / den : 0;
+    const a = (sy - b * sx) / n; // x = 0 i punktet selv
+    return { t: p.t, value: p.value, trend: a, deriv: b * 1000 };
   });
 }
 
-function render() {
-  const weights = rows.filter((r) => r.type === 'weight');
-  const fats = rows.filter((r) => r.type === 'bodyFat');
-  $('content').hidden = false;
+const fmt1 = (v) => v.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmt0 = (v) => Math.round(v).toLocaleString('nb-NO');
+const dayFmt = new Intl.DateTimeFormat('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const timeFmt = new Intl.DateTimeFormat('nb-NO', { hour: '2-digit', minute: '2-digit' });
 
+function hasTime(r) { return !(isSheet(r) && r.t.getHours() === 0 && r.t.getMinutes() === 0); }
+function when(r) { return dayFmt.format(r.t) + (hasTime(r) ? ', ' + timeFmt.format(r.t) : ''); }
+
+function render() {
+  $('content').hidden = false;
+  const weights = cleanWeights();
+  const fats = rows.filter((r) => r.type === 'bodyFat').sort((a, b) => a.t - b.t);
   if (!weights.length) {
     say('Ingen veiinger lagret ennå. Trykk «Hent fra vekta».');
-    $('chart').replaceChildren();
-    $('list').replaceChildren();
     return;
   }
+  renderControls();
 
-  const lastW = weights[weights.length - 1];
-  $('kpi-weight').textContent = kg(lastW.value) + ' kg';
-  $('kpi-weight-sub').textContent = dayFmt.format(lastW.t);
+  const all = trendOf(weights, settings.before, settings.after);
+  const from = settings.period === 'all' ? weights[0].t : new Date(Date.now() - Number(settings.period) * DAY);
+  const shown = all.filter((p) => p.t >= from);
+  const shownFat = fats.filter((p) => p.t >= from);
+  const last = all[all.length - 1];
+
+  $('kpi-weight').textContent = fmt1(weights[weights.length - 1].value) + ' kg';
+  $('kpi-weight-sub').textContent = when(weights[weights.length - 1]);
+  $('kpi-trend').textContent = fmt1(last.trend) + ' kg';
+  $('kpi-trend-sub').textContent = `Trend med ${settings.before} målinger før og ${settings.after} etter`;
+  $('kpi-rate').textContent = (last.deriv > 0 ? '+' : last.deriv < 0 ? '−' : '') + fmt0(Math.abs(last.deriv)) + ' g/dag';
+  $('kpi-rate-sub').textContent = `${last.deriv > 0 ? '+' : last.deriv < 0 ? '−' : ''}${(Math.abs(last.deriv) * 7 / 1000).toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg per uke`;
   if (fats.length) {
-    const lastF = fats[fats.length - 1];
-    $('kpi-fat').textContent = kg(lastF.value) + ' %';
-    $('kpi-fat-sub').textContent = dayFmt.format(lastF.t);
+    $('kpi-fat').textContent = fmt1(fats[fats.length - 1].value) + ' %';
+    $('kpi-fat-sub').textContent = when(fats[fats.length - 1]);
   }
-  const trend = movingAverage(weights, 7);
-  const now = trend[trend.length - 1].value;
-  const monthAgo = trend.filter((p) => p.t <= new Date(Date.now() - 30 * 864e5)).pop();
-  $('kpi-trend').textContent = kg(now) + ' kg';
-  $('kpi-trend-sub').textContent = monthAgo
-    ? `${now - monthAgo.value <= 0 ? '−' : '+'}${kg(Math.abs(now - monthAgo.value))} kg siste 30 dager`
-    : '';
 
-  renderChart(weights, trend);
+  const range = [shown.length ? shown[0].t : from, new Date()];
+  lineChart($('chart-weight'), range, [
+    { pts: shown.map((p) => ({ t: p.t, v: p.value })), cls: 'weight-dot', dots: true },
+    { pts: shown.map((p) => ({ t: p.t, v: p.trend })), cls: 'weight-trend' },
+  ], { unit: 'kg' });
+  lineChart($('chart-deriv'), range, [
+    { pts: shown.map((p) => ({ t: p.t, v: p.deriv })), cls: 'deriv-line' },
+  ], { unit: 'g/dag', zero: true });
+  weekdayChart($('chart-weekday'), shown);
+  if (shownFat.length) {
+    const fatTrend = trendOf(shownFat, Math.min(settings.before, 15), Math.min(settings.after, 15));
+    lineChart($('chart-fat'), range, [
+      { pts: shownFat.map((p) => ({ t: p.t, v: p.value })), cls: 'fat-dot', dots: true },
+      { pts: fatTrend.map((p) => ({ t: p.t, v: p.trend })), cls: 'fat-trend' },
+    ], { unit: '%' });
+    $('fat-panel').hidden = false;
+  } else {
+    $('fat-panel').hidden = true;
+  }
+  $('period-sub').textContent = `${shown.length} veiinger i perioden`;
   renderList(weights, fats);
 }
 
-function renderChart(weights, trend) {
-  const from = new Date(Date.now() - 90 * 864e5);
-  const pts = weights.filter((p) => p.t >= from);
-  const line = trend.filter((p) => p.t >= from);
-  const el = $('chart');
-  if (!pts.length) { el.textContent = 'Ingen veiinger siste 90 dager.'; return; }
+function renderControls() {
+  const seg = $('period');
+  if (!seg.childElementCount) {
+    for (const [value, label] of PERIODS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'radio'); b.dataset.value = value; b.textContent = label;
+      b.addEventListener('click', () => { settings.period = value; saveSettings(); render(); });
+      seg.append(b);
+    }
+    for (const id of ['before', 'after']) {
+      const input = $(id);
+      input.value = settings[id];
+      input.addEventListener('input', () => {
+        settings[id] = Number(input.value);
+        $(id + '-out').textContent = input.value;
+        saveSettings();
+        render();
+      });
+    }
+  }
+  for (const b of seg.children) b.setAttribute('aria-checked', String(b.dataset.value === settings.period));
+  for (const id of ['before', 'after']) $(id + '-out').textContent = settings[id];
+}
 
-  const W = Math.max(320, el.clientWidth || 800), H = 240, L = 44, R = 12, T = 12, B = 28;
-  const vals = pts.map((p) => p.value).concat(line.map((p) => p.value));
-  const lo = Math.floor(Math.min(...vals) - 0.5), hi = Math.ceil(Math.max(...vals) + 0.5);
-  const x = (t) => L + ((t - from) / (Date.now() - from)) * (W - L - R);
-  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
+// ---- Grafer ----
+
+const NS = 'http://www.w3.org/2000/svg';
+
+function svgOf(el, W, H, label) {
+  const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'Vekt siste 90 dager');
+  svg.setAttribute('aria-label', label);
   const add = (name, attrs, text) => {
-    const e = document.createElementNS(ns, name);
+    const e = document.createElementNS(NS, name);
     for (const k in attrs) e.setAttribute(k, attrs[k]);
-    if (text) e.textContent = text;
+    if (text != null) e.textContent = text;
     svg.append(e);
     return e;
   };
-  const step = hi - lo > 6 ? 2 : 1;
-  for (let v = lo; v <= hi; v += step) {
-    add('line', { class: 'gridline', x1: L, x2: W - R, y1: y(v), y2: y(v) });
-    add('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end' }, String(v));
-  }
-  for (let i = 0; i <= 3; i++) {
-    const t = new Date(from.getTime() + (i / 3) * (Date.now() - from));
-    add('text', { x: x(t), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === 3 ? 'end' : 'middle' }, shortFmt.format(t));
-  }
-  for (const p of pts) add('circle', { class: 'weight-dot', cx: x(p.t), cy: y(p.value), r: 3 });
-  add('polyline', { class: 'weight-trend', points: line.map((p) => `${x(p.t)},${y(p.value)}`).join(' ') });
   el.replaceChildren(svg);
+  return add;
+}
+
+function niceStep(span, target) {
+  const raw = span / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * mag >= raw) return m * mag;
+  return 10 * mag;
+}
+
+function lineChart(el, [t0, t1], series, opts) {
+  const vals = series.flatMap((s) => s.pts.map((p) => p.v)).filter(Number.isFinite);
+  if (!vals.length) { el.textContent = 'Ingen data i perioden.'; return; }
+  const W = Math.max(320, el.clientWidth || 800), H = 260, L = 48, R = 12, T = 12, B = 28;
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (opts.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const step = niceStep(hi - lo, 5);
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const add = svgOf(el, W, H, opts.unit);
+  for (let v = lo; v <= hi + step / 2; v += step) {
+    add('line', { class: opts.zero && Math.abs(v) < step / 2 ? 'baseline' : 'gridline', x1: L, x2: W - R, y1: y(v), y2: y(v) });
+    add('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end' }, Number(v.toFixed(2)).toLocaleString('nb-NO'));
+  }
+  const long = t1 - t0 > 400 * DAY;
+  const xf = new Intl.DateTimeFormat('nb-NO', long ? { month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+  for (let i = 0; i <= 4; i++) {
+    const t = new Date(t0.getTime() + (i / 4) * (t1 - t0));
+    add('text', { x: x(t), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === 4 ? 'end' : 'middle' }, xf.format(t));
+  }
+  for (const s of series) {
+    if (s.dots) {
+      const r = s.pts.length > 400 ? 1.6 : 2.6;
+      for (const p of s.pts) add('circle', { class: s.cls, cx: x(p.t), cy: y(p.v), r });
+    } else if (s.pts.length) {
+      // Brudd i linja der det går mer enn 60 dager mellom målinger (som 2016-2018).
+      let seg = [];
+      const flush = () => { if (seg.length) add('polyline', { class: s.cls, points: seg.join(' ') }); seg = []; };
+      s.pts.forEach((p, i) => {
+        if (i && p.t - s.pts[i - 1].t > 60 * DAY) flush();
+        seg.push(`${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`);
+      });
+      flush();
+    }
+  }
+}
+
+// Avvik fra trend (vekt − trend) i snitt per ukedag, som regnearkets søylediagram.
+function weekdayChart(el, points) {
+  const sum = Array(7).fill(0), n = Array(7).fill(0);
+  for (const p of points) {
+    const d = (p.t.getDay() + 6) % 7; // mandag = 0
+    sum[d] += p.value - p.trend; n[d]++;
+  }
+  const avg = sum.map((s, i) => (n[i] ? (s / n[i]) * 1000 : 0)); // gram
+  const W = Math.max(320, el.clientWidth || 800), H = 220, L = 48, R = 12, T = 12, B = 28;
+  const m = Math.max(50, ...avg.map(Math.abs));
+  const step = niceStep(2 * m, 4), top = Math.ceil(m / step) * step;
+  const y = (v) => T + (1 - (v + top) / (2 * top)) * (H - T - B);
+  const add = svgOf(el, W, H, 'Avvik fra trend per ukedag');
+  for (let v = -top; v <= top + step / 2; v += step) {
+    add('line', { class: Math.abs(v) < step / 2 ? 'baseline' : 'gridline', x1: L, x2: W - R, y1: y(v), y2: y(v) });
+    add('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end' }, `${Math.round(v)} g`);
+  }
+  const bw = (W - L - R) / 7;
+  avg.forEach((v, i) => {
+    const x0 = L + i * bw + bw * 0.18, w = bw * 0.64;
+    add('rect', { class: v >= 0 ? 'bar-up' : 'bar-down', x: x0, width: w, y: Math.min(y(v), y(0)), height: Math.max(1, Math.abs(y(v) - y(0))) });
+    add('text', { x: x0 + w / 2, y: v >= 0 ? y(v) - 4 : y(v) + 14, 'text-anchor': 'middle' }, n[i] ? `${v > 0 ? '+' : ''}${Math.round(v)}` : '–');
+    add('text', { x: x0 + w / 2, y: H - 8, 'text-anchor': 'middle' }, WEEKDAYS[i].slice(0, 3));
+  });
 }
 
 function renderList(weights, fats) {
-  // Fettprosent fra samme veiing har (nesten) samme tidspunkt; slå dem sammen per minutt.
   const fatAt = new Map(fats.map((f) => [Math.round(f.t / 6e4), f.value]));
   const table = document.createElement('table');
   table.className = 'weights';
-  table.innerHTML = '<thead><tr><th>Tid</th><th class="num">Vekt</th><th class="num">Fett</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Tid</th><th class="num">Vekt</th><th class="num">Fett</th><th>Kilde</th></tr></thead>';
   const body = document.createElement('tbody');
   for (const w of weights.slice(-20).reverse()) {
     const tr = document.createElement('tr');
     const fat = fatAt.get(Math.round(w.t / 6e4));
-    for (const [text, cls] of [[dayFmt.format(w.t), ''], [kg(w.value) + ' kg', 'num'], [fat != null ? kg(fat) + ' %' : '–', 'num']]) {
+    const kilde = isSheet(w) ? 'Regneark' : 'Aria';
+    for (const [text, cls] of [[when(w), ''], [fmt1(w.value) + ' kg', 'num'], [fat != null ? fmt1(fat) + ' %' : '–', 'num'], [kilde, '']]) {
       const td = document.createElement('td');
       td.textContent = text;
       if (cls) td.className = cls;
@@ -285,7 +422,10 @@ function renderList(weights, fats) {
 // ---- Oppstart ----
 
 mountAuthBar($('auth'));
-$('sync').addEventListener('click', sync);
+$('sync').addEventListener('click', () => sync(false));
+$('sync-all').addEventListener('click', () => sync(true));
+let resizeTimer;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => rows.length && render(), 200); });
 
 if (!configured) {
   say('Innloggingen er ikke satt opp: js/firebase-config.js mangler verdiene fra Firebase.');
@@ -293,14 +433,16 @@ if (!configured) {
   onUser(async (user) => {
     currentUser = user;
     $('sync').hidden = !user || !googleClientId;
+    $('sync-all').hidden = !user || !googleClientId;
     if (!user) {
       $('content').hidden = true;
       say('Appen er privat.', true);
       return;
     }
-    if (!googleClientId) say('Koblingen til Google Health er ikke satt opp ennå (googleClientId mangler).');
+    say('Henter målinger …');
     try {
       await loadRows();
+      say('');
       render();
     } catch (err) {
       say(err && err.code === 'permission-denied' ? 'Denne kontoen har ikke tilgang.' : 'Klarte ikke å lese data (' + (err.code || err.message) + ').');

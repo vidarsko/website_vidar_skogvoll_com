@@ -28,36 +28,86 @@
   <main id="main">
     <div class="page-head">
       <h1>Vekt</h1>
-      <button class="btn btn-primary" type="button" id="sync" hidden>Hent fra vekta</button>
+      <div class="actions">
+        <button class="btn" type="button" id="sync-all" hidden title="Henter alt Google har, fra 2014. Trengs bare én gang.">Hent hele historikken</button>
+        <button class="btn btn-primary" type="button" id="sync" hidden>Hent fra vekta</button>
+      </div>
     </div>
 
     <p class="notice" id="notice" hidden></p>
 
     <div id="content" hidden>
-      <section class="kpis" aria-label="Siste måling">
+      <section class="kpis" aria-label="Nøkkeltall">
         <div class="tile">
-          <span class="tile-label">Vekt</span>
+          <span class="tile-label">Siste veiing</span>
           <span class="tile-value" id="kpi-weight">–</span>
           <span class="tile-delta" id="kpi-weight-sub"></span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">Trendvekt</span>
+          <span class="tile-value" id="kpi-trend">–</span>
+          <span class="tile-delta" id="kpi-trend-sub"></span>
+        </div>
+        <div class="tile">
+          <span class="tile-label">Vektendring nå</span>
+          <span class="tile-value" id="kpi-rate">–</span>
+          <span class="tile-delta" id="kpi-rate-sub"></span>
         </div>
         <div class="tile">
           <span class="tile-label">Fettprosent</span>
           <span class="tile-value" id="kpi-fat">–</span>
           <span class="tile-delta" id="kpi-fat-sub"></span>
         </div>
-        <div class="tile">
-          <span class="tile-label">Trend (snitt av siste 7 veiinger)</span>
-          <span class="tile-value" id="kpi-trend">–</span>
-          <span class="tile-delta" id="kpi-trend-sub"></span>
-        </div>
       </section>
 
-      <section class="panel panel-wide" aria-labelledby="chart-title">
-        <div class="panel-head">
-          <h2 id="chart-title">Vekt siste 90 dager</h2>
-          <p class="panel-sub">Punkter er veiinger, linja er snittet av de siste 7</p>
+      <section class="panel controls" aria-label="Visning">
+        <div class="control">
+          <span class="control-label">Periode</span>
+          <div class="seg" id="period" role="radiogroup" aria-label="Periode"></div>
         </div>
-        <div class="chart" id="chart"></div>
+        <label class="control">
+          <span class="control-label">Målinger før <output id="before-out"></output></span>
+          <input type="range" id="before" min="1" max="90" step="1">
+        </label>
+        <label class="control">
+          <span class="control-label">Målinger etter <output id="after-out"></output></span>
+          <input type="range" id="after" min="0" max="90" step="1">
+        </label>
+        <p class="panel-sub control-help">Trenden i hvert punkt er en rett linje tilpasset målingene rundt det: så mange før og etter. Flere målinger gir en glattere trend. Med 0 etter bruker trenden bare det som var kjent den dagen.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="weight-title">
+        <div class="panel-head">
+          <h2 id="weight-title">Vekt og trend</h2>
+          <p class="panel-sub" id="period-sub"></p>
+        </div>
+        <div class="chart" id="chart-weight"></div>
+      </section>
+
+      <div class="grid-2">
+        <section class="panel" aria-labelledby="deriv-title">
+          <div class="panel-head">
+            <h2 id="deriv-title">Vektendring</h2>
+            <p class="panel-sub">Trendens stigning, i gram per dag. Under null = ned i vekt.</p>
+          </div>
+          <div class="chart" id="chart-deriv"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="weekday-title">
+          <div class="panel-head">
+            <h2 id="weekday-title">Avvik fra trend per ukedag</h2>
+            <p class="panel-sub">Hvor mye tyngre eller lettere enn trenden du i snitt veier hver ukedag, i perioden.</p>
+          </div>
+          <div class="chart" id="chart-weekday"></div>
+        </section>
+      </div>
+
+      <section class="panel" id="fat-panel" aria-labelledby="fat-title" hidden>
+        <div class="panel-head">
+          <h2 id="fat-title">Fettprosent</h2>
+          <p class="panel-sub">Fra Aria-vekta. Regnearket hadde ikke fettprosent.</p>
+        </div>
+        <div class="chart" id="chart-fat"></div>
       </section>
 
       <section class="panel" aria-labelledby="list-title">
