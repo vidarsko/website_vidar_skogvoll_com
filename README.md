@@ -1,1 +1,0 @@
-# website_vidar_skogvoll_com
