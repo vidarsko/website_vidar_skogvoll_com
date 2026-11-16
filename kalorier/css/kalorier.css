@@ -94,10 +94,7 @@ table.weeks tr.muted td { color: var(--text-muted); }
 .link:hover { text-decoration: underline; }
 .more { margin-top: 12px; }
 
-/* Import */
-.import summary { cursor: pointer; font-weight: 600; width: fit-content; }
-.import-body { display: grid; gap: 12px; margin-top: 16px; }
-.import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+/* Skjemafelt */
 .field { display: grid; gap: 6px; }
 .field-label { font-size: 14px; color: var(--text-muted); }
 .field-label output { color: var(--text); font-weight: 700; margin-left: 4px; font-variant-numeric: tabular-nums; }

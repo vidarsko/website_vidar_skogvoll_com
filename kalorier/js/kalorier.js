@@ -7,11 +7,12 @@
 //
 // Matloggen ligger i samlingen «matlogg», én oppføring per dokument:
 //   t (tid), kat (kategori-id), mengde (i kategoriens enhet), kcal (+ mat, − trening, netto),
-//   notat (valgfritt; Lose It-navnet ved import), kilde ('app' | 'loseit'), lagret.
+//   notat (valgfritt; Lose It-navnet på importerte rader), kilde ('app' | 'loseit'), lagret.
+// Lose It-historikken ble importert én gang 2026-11-16; importen ble fjernet etterpå (se git-historikken).
 // Se kalorier_private/AGENTS.md.
 
 import {
-  getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc, writeBatch,
+  getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
   query, where, orderBy, Timestamp, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { app, configured, mountAuthBar, onUser, signIn, showError } from '/js/auth.js';
@@ -122,12 +123,6 @@ async function ensureFrom(from) {
   const snap = await getDocs(query(collection(db, LOG), ...parts, orderBy('t')));
   entries = snap.docs.map(fromDoc).concat(entries);
   loadedFrom = from;
-}
-
-async function reloadAll() {
-  const from = loadedFrom;
-  entries = []; loadedFrom = null;
-  await ensureFrom(from);
 }
 
 // ---- Visning ----
@@ -414,157 +409,6 @@ function toast(text, undo) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; undoFn = null; }, 6000);
 }
 
-// ---- Import fra Lose It ----
-
-function parseCSV(text) {
-  text = text.replace(/^﻿/, '');
-  const rows = [];
-  let row = [], f = '', q = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (q) {
-      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c;
-    } else if (c === '"') q = true;
-    else if (c === ',') { row.push(f); f = ''; }
-    else if (c === '\n') { row.push(f); rows.push(row); row = []; f = ''; }
-    else if (c !== '\r') f += c;
-  }
-  if (f !== '' || row.length) { row.push(f); rows.push(row); }
-  const [head, ...body] = rows;
-  return body.filter((r) => r.length === head.length).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i]])));
-}
-
-// cyrb53: kort, stabil hash, så samme Lose It-rad alltid får samme dokument-ID.
-function hash(str) {
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
-}
-
-const num = (s) => Number(String(s || '0').replace(/,/g, '')) || 0;
-
-function loseItDate(s, hm) {
-  const [mo, d, y] = s.split('/').map(Number);
-  const [h, mi] = hm.split(':').map(Number);
-  return new Date(y, mo - 1, d, h, mi);
-}
-
-function classify(name, icon, type) {
-  const list = setup.kategorier.filter((c) => c.type === type);
-  for (const c of list) if (c.loseit && new RegExp(c.loseit, 'i').test(name)) return c;
-  for (const c of list) if ((c.loseit_ikoner || []).includes(icon)) return c;
-  return cats.get(type === 'mat' ? 'annet' : 'annen_trening');
-}
-
-let pending = [];
-
-async function prepareImport() {
-  const L = setup.loseit;
-  const earliest = new Date(L.tidligste_dato + 'T00:00:00');
-  const out = [], seen = new Map();
-  let deleted = 0, tooEarly = 0, skipped = 0;
-  const idFor = (prefix, r) => {
-    const k = prefix + Object.values(r).join('|');
-    const n = (seen.get(k) || 0) + 1;
-    seen.set(k, n);
-    return `loseit_${prefix}_${hash(k + '#' + n)}`;
-  };
-  const food = $('file-food').files[0], ex = $('file-ex').files[0];
-  if (food) {
-    for (const r of parseCSV(await food.text())) {
-      if (r.Deleted !== '0') { deleted++; continue; }
-      const t = loseItDate(r.Date, L.tider[r.Meal] || '12:00');
-      if (t < earliest) { tooEarly++; continue; }
-      const cat = classify(r.Name, r.Icon, 'mat');
-      const kcal = Math.round(num(r.Calories));
-      out.push({ id: idFor('m', r), t, kat: cat.id, mengde: Math.round((kcal / cat.kcal) * 100) / 100, kcal, notat: r.Name });
-    }
-  }
-  if (ex) {
-    for (const r of parseCSV(await ex.text())) {
-      if (r.Deleted !== '0') { deleted++; continue; }
-      if ((L.hopp_over_trening || []).includes(r.Name)) { skipped++; continue; }
-      const t = loseItDate(r.Date, L.tider.trening);
-      if (t < earliest) { tooEarly++; continue; }
-      const cat = classify(r.Name, '', 'trening');
-      const min = num(r.Quantity);
-      const net = Math.max(0, -num(r.Calories) - L.hvileforbruk_per_min * min);
-      const mengde = cat.enhet === 'time' ? min / 60 : min;
-      out.push({ id: idFor('t', r), t, kat: cat.id, mengde: Math.round(mengde * 100) / 100, kcal: -Math.round(net), notat: r.Name });
-    }
-  }
-  pending = out;
-  renderPreview({ deleted, tooEarly, skipped });
-}
-
-function renderPreview(skip) {
-  const box = $('import-preview');
-  box.replaceChildren();
-  $('import-run').disabled = !pending.length;
-  $('import-run').textContent = pending.length ? `Importer ${fmt0(pending.length)} rader` : 'Importer';
-  if (!pending.length) { $('import-status').textContent = ''; return; }
-  const by = new Map();
-  for (const e of pending) {
-    const x = by.get(e.kat) || { n: 0, kcal: 0 };
-    x.n++; x.kcal += e.kcal; by.set(e.kat, x);
-  }
-  const table = document.createElement('table');
-  table.className = 'weeks';
-  table.innerHTML = '<thead><tr><th>Kategori</th><th>Rader</th><th>kcal</th></tr></thead>';
-  const body = document.createElement('tbody');
-  for (const cat of setup.kategorier) {
-    const x = by.get(cat.id);
-    if (!x) continue;
-    const tr = document.createElement('tr');
-    for (const text of [cat.navn, fmt0(x.n), fmt0(x.kcal)]) {
-      const td = document.createElement('td'); td.textContent = text; tr.append(td);
-    }
-    body.append(tr);
-  }
-  table.append(body);
-  box.append(table);
-  const ts = pending.map((e) => e.t).sort((a, b) => a - b);
-  const notes = [`${shortDate.format(ts[0])} ${ts[0].getFullYear()} – ${shortDate.format(ts[ts.length - 1])} ${ts[ts.length - 1].getFullYear()}`];
-  if (skip.deleted) notes.push(`${skip.deleted} slettet i Lose It`);
-  if (skip.tooEarly) notes.push(`${skip.tooEarly} med dato før ${setup.loseit.tidligste_dato}`);
-  if (skip.skipped) notes.push(`${skip.skipped} treningsøkter uten kcal (${setup.loseit.hopp_over_trening.join(', ')})`);
-  if (notes.length > 1) $('import-status').textContent = notes[0] + '. Hoppes over: ' + notes.slice(1).join(', ') + '.';
-  else $('import-status').textContent = notes[0] + '.';
-}
-
-async function runImport() {
-  const button = $('import-run');
-  button.disabled = true;
-  try {
-    for (let i = 0; i < pending.length; i += 400) {
-      const batch = writeBatch(db);
-      for (const e of pending.slice(i, i + 400)) {
-        batch.set(doc(db, LOG, e.id), {
-          t: Timestamp.fromDate(e.t), kat: e.kat, mengde: e.mengde, kcal: e.kcal,
-          notat: e.notat, kilde: 'loseit', lagret: serverTimestamp(),
-        });
-      }
-      await batch.commit();
-      $('import-status').textContent = `Skrevet ${fmt0(Math.min(i + 400, pending.length))} av ${fmt0(pending.length)} …`;
-    }
-    const n = pending.length;
-    pending = [];
-    await reloadAll();
-    render();
-    $('import-status').textContent = `Importert ${fmt0(n)} rader. Å importere samme filer på nytt lager ikke dobbelt opp.`;
-    button.textContent = 'Importer';
-  } catch (err) {
-    $('import-status').textContent = 'Importen stoppet (' + (err.code || err.message) + '). Det som ble skrevet, ligger der; kjør på nytt for resten.';
-    button.disabled = false;
-  }
-}
-
 // ---- Oppstart ----
 
 mountAuthBar($('auth'));
@@ -591,10 +435,6 @@ $('toast-undo').addEventListener('click', () => {
   $('toast').hidden = true; undoFn = null;
   if (fn) Promise.resolve(fn()).catch((err) => say('Klarte ikke å angre (' + (err.code || err.message) + ').'));
 });
-for (const id of ['file-food', 'file-ex']) {
-  $(id).addEventListener('change', () => prepareImport().catch((err) => { $('import-status').textContent = 'Klarte ikke å lese fila: ' + err.message; }));
-}
-$('import-run').addEventListener('click', runImport);
 document.addEventListener('visibilitychange', () => {
   // Står appen åpen over midnatt, hopper «I dag» til den nye dagen.
   if (document.visibilityState === 'visible' && setup && followToday && !isToday(day)) goTo(new Date());
