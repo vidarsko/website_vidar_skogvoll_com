@@ -330,7 +330,7 @@ function openEntry(cat, entry) {
   // bare fint (`fineStep`) når den vises og regnes om til kcal.
   const r = $('entry-range');
   const value = entry ? amountOf(cat, entry.kcal) : cat.std;
-  r.min = Math.min(cat.min, value);
+  r.min = 0; // alle sliderne går helt ned til 0 (Vidar 2026-11-16)
   r.max = Math.max(cat.maks, value);
   r.step = 'any';
   r.value = value;
@@ -366,12 +366,14 @@ function updateDialog() {
   $('entry-amount').textContent = amountText(current, m);
   const k = kcalLocked != null ? kcalLocked : kcalOf(current, m);
   $('entry-kcal').textContent = (k < 0 ? '−' : '') + fmt0(Math.abs(k));
+  $('entry-save').disabled = k === 0; // 0 kcal er ingenting å lagre; slett i stedet
 }
 
 function closeEntry() { $('entry').close(); }
 
 async function saveEntry(ev) {
   ev.preventDefault();
+  if ($('entry-save').disabled) return;
   const [h, mi] = ($('entry-time').value || '12:00').split(':').map(Number);
   const base = editing ? editing.t : day;
   const t = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, mi);
