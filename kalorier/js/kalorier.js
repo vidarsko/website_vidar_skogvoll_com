@@ -88,6 +88,9 @@ function kcalOf(cat, m) {
   const k = Math.round(m * cat.kcal);
   return cat.type === 'trening' ? -k : k;
 }
+// Fargen kommer fra kategoriens gruppe (frokost, drikke, sott, frukt, maltid, trening, annet).
+const groupClass = (cat) => 'g-' + ((cat && cat.gruppe) || 'annet');
+
 function iconSvg(cat, size) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 48 48');
@@ -181,7 +184,7 @@ function renderDay() {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'entry';
     const time = document.createElement('span'); time.className = 'e-time'; time.textContent = hhmm(e.t);
-    const icon = document.createElement('span'); icon.className = 'e-icon'; icon.append(iconSvg(cat, 28));
+    const icon = document.createElement('span'); icon.className = 'e-icon ' + groupClass(cat); icon.append(iconSvg(cat, 24));
     const name = document.createElement('span'); name.className = 'e-name';
     name.textContent = cat ? cat.navn : e.kat;
     const sub = document.createElement('small');
@@ -284,7 +287,7 @@ function renderGrids() {
     grid.replaceChildren();
     for (const cat of setup.kategorier.filter((c) => c.type === type)) {
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'cat';
+      b.type = 'button'; b.className = 'cat ' + groupClass(cat);
       const icon = document.createElement('span'); icon.className = 'cat-icon'; icon.append(iconSvg(cat, 40));
       const name = document.createElement('span'); name.className = 'cat-name'; name.textContent = cat.kort || cat.navn;
       b.append(icon, name);
@@ -314,7 +317,8 @@ let kcalLocked = null; // kcal fra en importert oppføring, til slideren flyttes
 function openEntry(cat, entry) {
   if (!cat) return;
   current = cat; editing = entry; kcalLocked = entry ? entry.kcal : null;
-  $('entry-icon').replaceChildren(iconSvg(cat, 44));
+  $('entry').className = 'entry-dialog ' + groupClass(cat);
+  $('entry-icon').replaceChildren(iconSvg(cat, 32));
   $('entry-title').textContent = cat.navn;
   $('entry-info').textContent = cat.info || '';
   $('entry-info').hidden = !cat.info;

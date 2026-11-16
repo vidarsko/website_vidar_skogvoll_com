@@ -1,4 +1,18 @@
 /* Kaloriappen: bare det som ikke finnes i /css/style.css. */
+/* Fargene til kategoriene, én per gruppe (gruppe i oppsettet). Hver farge betyr én gruppe og
+   brukes ikke til noe annet; navnet står alltid ved ikonet, så fargen bærer ikke mening alene. */
+:root {
+  --g-frokost: #c98500; --g-drikke: #2a78d6; --g-sott: #d55181; --g-frukt: #1a9a6c;
+  --g-maltid: #e05a26; --g-trening: #7656e8; --g-annet: #8E8678;
+}
+html[data-theme="dark"] {
+  --g-frokost: #f0b429; --g-drikke: #5b9cf0; --g-sott: #ec7fa8; --g-frukt: #2fc48e;
+  --g-maltid: #f07a45; --g-trening: #9b85f5; --g-annet: #A8A29A;
+}
+.g-frokost { --c: var(--g-frokost); } .g-drikke { --c: var(--g-drikke); } .g-sott { --c: var(--g-sott); }
+.g-frukt { --c: var(--g-frukt); } .g-maltid { --c: var(--g-maltid); } .g-trening { --c: var(--g-trening); }
+.g-annet { --c: var(--g-annet); }
+
 main, #content { grid-template-columns: minmax(0, 1fr); }
 #content { display: grid; gap: 16px; }
 #content[hidden], .empty[hidden], [hidden] { display: none !important; }
@@ -46,27 +60,33 @@ main, #content { grid-template-columns: minmax(0, 1fr); }
 }
 .cat:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .cat:active { background: var(--surface-hover); }
-.cat-icon { display: grid; place-items: center; height: 40px; color: var(--text); }
+.cat-icon {
+  display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+.cat:hover .cat-icon { background: color-mix(in srgb, var(--c) 22%, transparent); }
 .cat-name {
   font-size: 13px; line-height: 1.25; text-align: center; min-height: 2.5em; max-width: 100%;
   hyphens: manual; overflow-wrap: anywhere;
 }
-#grid-trening .cat-icon { color: var(--accent); }
 
 /* Loggen for dagen */
 .entries { list-style: none; display: grid; }
 .entry {
-  display: grid; grid-template-columns: 3.2em 28px 1fr auto; align-items: center; gap: 12px;
+  display: grid; grid-template-columns: 3.2em 34px 1fr auto; align-items: center; gap: 12px;
   width: 100%; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--border);
   background: transparent; text-align: left; cursor: pointer; border-radius: 6px;
 }
 .entry:hover { background: var(--surface-hover); }
 .e-time { font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.e-icon { display: grid; place-items: center; }
+.e-icon {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent);
+}
 .e-name { display: grid; min-width: 0; }
 .e-name small { font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .e-kcal { font-weight: 700; font-variant-numeric: tabular-nums; }
-.e-kcal.neg { color: var(--accent); }
+.e-kcal.neg { color: var(--g-trening); }
 
 /* Uka */
 .week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
@@ -116,7 +136,10 @@ table.weeks tr.muted td { color: var(--text-muted); }
 .entry-dialog form { display: grid; gap: 14px; }
 .entry-head { display: grid; grid-template-columns: 44px 1fr 40px; align-items: center; gap: 12px; }
 .entry-head h2 { font-size: 20px; font-weight: 700; line-height: 1.25; }
-.entry-icon { display: grid; place-items: center; }
+.entry-icon {
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent);
+}
 .entry-info { font-size: 13px; color: var(--text-muted); }
 .close {
   display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--radius-pill);
@@ -129,7 +152,7 @@ table.weeks tr.muted td { color: var(--text-muted); }
   font-variant-numeric: tabular-nums;
 }
 .entry-kcal { font-size: 40px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.entry-kcal span { display: inline-block; min-width: 3.2ch; }
+.entry-dialog input[type="range"] { accent-color: var(--c); }
 .field-time { max-width: 160px; }
 .entry-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 .entry-actions .btn { min-height: 44px; }
