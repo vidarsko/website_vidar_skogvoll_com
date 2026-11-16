@@ -77,23 +77,57 @@ function getToken() {
   });
 }
 
+// Feltnavnet i filteret er ikke dokumentert for body-fat. `weight` virker; for fett prøves
+// `body_fat` (snake_case, som i AIP-160) og så `bodyFat`. Gir begge 400, hentes uten filter og
+// sorteres på tid her. Det første navnet som virker, huskes for resten av økta.
+const FILTER_NAMES = { weight: ['weight'], bodyFat: ['body_fat', 'bodyFat', null] };
+const workingFilter = {};
+
+async function errorText(r) {
+  try {
+    const j = await r.json();
+    return (j.error && j.error.message) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
 async function fetchType(token, apiType, field, since) {
+  const names = field in workingFilter ? [workingFilter[field]] : FILTER_NAMES[field];
+  let lastError = null;
+  for (const name of names) {
+    try {
+      const out = await fetchPages(token, apiType, field, since, name);
+      workingFilter[field] = name;
+      return out;
+    } catch (err) {
+      lastError = err;
+      if (err.status !== 400) break;
+    }
+  }
+  throw lastError;
+}
+
+async function fetchPages(token, apiType, field, since, filterName) {
   const out = [];
   let pageToken = '';
   do {
-    const params = new URLSearchParams({
-      filter: `${field}.sample_time.physical_time >= "${since.toISOString()}"`,
-      pageSize: '1000',
-    });
+    const params = new URLSearchParams({ pageSize: '1000' });
+    if (filterName) params.set('filter', `${filterName}.sample_time.physical_time >= "${since.toISOString()}"`);
     if (pageToken) params.set('pageToken', pageToken);
     const r = await fetch(`${API}/${apiType}/dataPoints?${params}`, {
       headers: { Authorization: 'Bearer ' + token },
     });
-    if (!r.ok) throw new Error(`Google Health svarte ${r.status} for ${apiType}`);
+    if (!r.ok) {
+      const err = new Error(`Google Health svarte ${r.status} for ${apiType}: ${await errorText(r)}`);
+      err.status = r.status;
+      throw err;
+    }
     const json = await r.json();
     for (const p of json.dataPoints || []) {
       const m = p[field];
       if (!m || !m.sampleTime || !m.sampleTime.physicalTime) continue;
+      if (!filterName && new Date(m.sampleTime.physicalTime) < since) continue;
       const value = field === 'weight' ? m.weightGrams / 1000 : m.percentage;
       out.push({
         id: p.name.replace(/\//g, '_'),
@@ -119,16 +153,23 @@ async function sync() {
     const since = last
       ? new Date(last.getTime() - 3 * 864e5)
       : new Date(Date.now() - FIRST_SYNC_DAYS * 864e5);
-    const fetched = [
-      ...(await fetchType(token, 'weight', 'weight', since)),
-      ...(await fetchType(token, 'body-fat', 'bodyFat', since)),
-    ];
+    // Hver type for seg: feiler fettprosenten, lagres vekta likevel.
+    const fetched = [];
+    const problems = [];
+    for (const [apiType, field] of [['weight', 'weight'], ['body-fat', 'bodyFat']]) {
+      try {
+        fetched.push(...(await fetchType(token, apiType, field, since)));
+      } catch (err) {
+        problems.push(err.message);
+      }
+    }
     const known = new Set(rows.map((r) => r.id));
     const fresh = fetched.filter((r) => !known.has(r.id));
     if (fresh.length) await saveRows(fresh);
     await loadRows();
     render();
-    say(fresh.length ? `Hentet ${fresh.length} nye målinger.` : 'Ingen nye målinger.');
+    const done = fresh.length ? `Hentet ${fresh.length} nye målinger.` : 'Ingen nye målinger.';
+    say(problems.length ? `${done} Feil: ${problems.join(' · ')}` : done);
   } catch (err) {
     say('Klarte ikke å hente: ' + err.message);
   } finally {
