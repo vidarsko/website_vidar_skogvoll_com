@@ -326,12 +326,13 @@ function openEntry(cat, entry) {
     ? 'Antall kcal, omtrent'
     : `1 ${cat.enhet}${cat.str ? ' (' + cat.str + ')' : ''} = ${fmtNum(cat.kcal)} kcal${cat.type === 'trening' ? ' netto' : ''}`;
 
+  // Slideren er bortimot kontinuerlig (Vidar 2026-11-16): ingen faste trinn, og mengden rundes
+  // bare fint (`fineStep`) når den vises og regnes om til kcal.
   const r = $('entry-range');
   const value = entry ? amountOf(cat, entry.kcal) : cat.std;
-  const offGrid = Math.abs(Math.round((value - cat.min) / cat.steg) * cat.steg + cat.min - value) > 1e-9;
   r.min = Math.min(cat.min, value);
   r.max = Math.max(cat.maks, value);
-  r.step = offGrid ? 'any' : cat.steg;
+  r.step = 'any';
   r.value = value;
 
   const t = entry ? entry.t : new Date();
@@ -345,8 +346,23 @@ function openEntry(cat, entry) {
   $('entry-save').focus();
 }
 
-function updateDialog() {
+// Mengden fra slideren, rundet til et pent tall (1, 2 eller 5 × 10^k) rundt en tidel av
+// kategoriens `steg`, men aldri finere enn 0,01, så den viste mengden (to desimaler) og kcal
+// stemmer overens.
+function fineStep(steg) {
+  const x = steg / 10;
+  const p = 10 ** Math.floor(Math.log10(x));
+  const nice = [5, 2, 1].map((f) => f * p).find((v) => v <= x * (1 + 1e-9));
+  return Math.max(nice, 0.01);
+}
+function sliderAmount() {
+  const fine = fineStep(current.steg);
   const m = Number($('entry-range').value);
+  return Number((Math.round(m / fine) * fine).toFixed(6));
+}
+
+function updateDialog() {
+  const m = sliderAmount();
   $('entry-amount').textContent = amountText(current, m);
   const k = kcalLocked != null ? kcalLocked : kcalOf(current, m);
   $('entry-kcal').textContent = (k < 0 ? '−' : '') + fmt0(Math.abs(k));
@@ -362,7 +378,7 @@ async function saveEntry(ev) {
   const data = {
     t: Timestamp.fromDate(t),
     kat: current.id,
-    kcal: kcalLocked != null ? kcalLocked : kcalOf(current, Number($('entry-range').value)),
+    kcal: kcalLocked != null ? kcalLocked : kcalOf(current, sliderAmount()),
     notat: $('entry-note').value.trim(),
     kilde: editing ? editing.kilde || 'app' : 'app',
     lagret: serverTimestamp(),
