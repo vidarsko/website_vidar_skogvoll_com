@@ -11,7 +11,7 @@
 //
 // Analysene er de fra regnearkets ark 2: trend som lokal lineær regresjon over N målinger før og
 // M etter hvert punkt (FORECAST), vektderivert som stigningstallet i samme vindu (g/dag), og
-// avvik fra trend per ukedag. Se kalorier_private/AGENTS.md.
+// avvik fra trend per ukedag. Se vekt_private/AGENTS.md.
 
 import {
   getFirestore, collection, doc, getDocs, writeBatch, query, orderBy,
@@ -278,8 +278,34 @@ function render() {
   } else {
     $('fat-panel').hidden = true;
   }
+  renderMass(weights, shownFat, range);
   $('period-sub').textContent = `${shown.length} veiinger i perioden`;
   renderList(weights, fats);
+}
+
+// Fettmasse og fettfri masse: for hver fettmåling, vekta fra samme veiing (samme minutt).
+function renderMass(weights, fatsInPeriod, range) {
+  const weightAt = new Map(weights.map((w) => [Math.round(w.t / 6e4), w.value]));
+  const fatMass = [], lean = [];
+  for (const f of fatsInPeriod) {
+    const w = weightAt.get(Math.round(f.t / 6e4));
+    if (w == null) continue;
+    fatMass.push({ t: f.t, value: (w * f.value) / 100 });
+    lean.push({ t: f.t, value: w - (w * f.value) / 100 });
+  }
+  $('mass-panels').hidden = !fatMass.length;
+  if (!fatMass.length) return;
+  const n = Math.min(settings.before, 15), m = Math.min(settings.after, 15);
+  for (const [series, el, sub, cls] of [[fatMass, 'chart-fatmass', 'fatmass-sub', 'fat'], [lean, 'chart-lean', 'lean-sub', 'lean']]) {
+    const tr = trendOf(series, n, m);
+    lineChart($(el), range, [
+      { pts: series.map((p) => ({ t: p.t, v: p.value })), cls: cls + '-dot', dots: true },
+      { pts: tr.map((p) => ({ t: p.t, v: p.trend })), cls: cls + '-trend' },
+    ], { unit: 'kg' });
+    const first = tr[0].trend, last = tr[tr.length - 1].trend, d = last - first;
+    const base = sub === 'fatmass-sub' ? 'Vekt × fettprosent, i kilo.' : 'Alt som ikke er fett: muskler, skjelett, organer, vann. I kilo.';
+    $(sub).textContent = `${base} Nå ${fmt1(last)} kg, ${d >= 0 ? '+' : '−'}${fmt1(Math.abs(d))} kg i perioden.`;
+  }
 }
 
 function renderControls() {

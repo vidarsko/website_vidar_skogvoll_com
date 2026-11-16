@@ -1,8 +1,8 @@
-/* Kaloriappen: bare det som ikke finnes i /css/style.css. */
+/* Vektappen: bare det som ikke finnes i /css/style.css. */
 .page-head .actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
 .page-head .btn[hidden] { display: none; }
 #content { display: grid; gap: 16px; }
-#content[hidden], #fat-panel[hidden] { display: none; }
+#content[hidden], #fat-panel[hidden], #mass-panels[hidden] { display: none; }
 
 /* Kontroller */
 .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 24px; align-items: end; }
@@ -18,6 +18,8 @@
 .chart .deriv-line { fill: none; stroke: var(--s-laeremedki); stroke-width: 2; stroke-linejoin: round; }
 .chart .fat-dot { fill: var(--s-skolesim); opacity: 0.4; }
 .chart .fat-trend { fill: none; stroke: var(--s-skolesim); stroke-width: 2.5; stroke-linejoin: round; }
+.chart .lean-dot { fill: var(--s-skogvoll); opacity: 0.4; }
+.chart .lean-trend { fill: none; stroke: var(--s-skogvoll); stroke-width: 2.5; stroke-linejoin: round; }
 .chart .bar-up { fill: var(--s-laeremedki); }
 .chart .bar-down { fill: var(--s-aiskilltrees); }
 
