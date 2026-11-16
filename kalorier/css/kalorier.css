@@ -1,0 +1,10 @@
+/* Kaloriappen: bare det som ikke finnes i /css/style.css. */
+.page-head .btn { margin-left: auto; }
+#content { display: grid; gap: 16px; }
+#content[hidden] { display: none; }
+.chart .weight-dot { fill: var(--s-aiskilltrees); opacity: 0.45; }
+.chart .weight-trend { fill: none; stroke: var(--s-aiskilltrees); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.weights { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.weights th, .weights td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.weights th { color: var(--text-muted); font-weight: 600; }
+.weights td.num, .weights th.num { text-align: right; }

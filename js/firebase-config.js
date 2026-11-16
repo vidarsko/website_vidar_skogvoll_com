@@ -11,3 +11,8 @@ export const firebaseConfig = {
   messagingSenderId: '506491419853',
   appId: '1:506491419853:web:c230b121720d83fefbfd84',
 };
+
+// OAuth-klient-ID for Google Health API (kaloriappens vektdata). Også offentlig med vilje:
+// klient-ID-en sier bare hvilken app som ber om tilgang; det er Vidar som gir tilgangen.
+// Hentes fra Google Cloud-konsollen: Google Auth Platform → Clients → Web client.
+export const googleClientId = '';
