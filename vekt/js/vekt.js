@@ -14,7 +14,7 @@
 // avvik fra trend per ukedag. Se vekt_private/AGENTS.md.
 
 import {
-  getFirestore, collection, doc, getDocs, writeBatch, query, orderBy,
+  getFirestore, collection, doc, getDocs, writeBatch, query, orderBy, where,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { app, configured, mountAuthBar, onUser, signIn, showError } from '/js/auth.js';
 import { googleClientId } from '/js/firebase-config.js';
@@ -42,12 +42,54 @@ function say(text, withLogin) {
 
 // ---- Firestore ----
 
+// Nettleseren husker målingene (localStorage), så en åpning leser bare de nyeste fra Firestore
+// i stedet for alle (1 633 lesinger hver gang, nær gratisgrensa på 50 000 per døgn).
+// Målinger slettes aldri og har faste ID-er, så nye kan flettes inn etter ID. Vinduet på tre
+// dager bakover fanger veiinger som er lagret fra en annen enhet med litt eldre tid. En gang i
+// uka hentes alt på nytt. Kopien slettes ved utlogging.
+const CACHE_KEY = 'vekt-maalinger-v1';
+const FULL_EVERY = 7 * 864e5;
+const OVERLAP = 3 * 864e5;
+let fullAt = 0;
+
+const fromDoc = (d) => {
+  const x = d.data();
+  return { id: d.id, type: x.type, t: x.t.toDate(), value: x.value, kilde: x.kilde || '' };
+};
+
+function mergeRows(newRows) {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const r of newRows) byId.set(r.id, r);
+  rows = [...byId.values()].sort((a, b) => a.t - b.t);
+}
+
+function writeCache() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      uid: currentUser.uid, fullAt, rows: rows.map((r) => ({ ...r, t: r.t.getTime() })),
+    }));
+  } catch (e) { /* full eller blokkert lagring: neste åpning leser alt */ }
+}
+
+function clearCache() {
+  try { localStorage.removeItem(CACHE_KEY); } catch (e) {}
+}
+
 async function loadRows() {
-  const snap = await getDocs(query(collection(db, 'maalinger'), orderBy('t')));
-  rows = snap.docs.map((d) => {
-    const x = d.data();
-    return { id: d.id, type: x.type, t: x.t.toDate(), value: x.value, kilde: x.kilde || '' };
-  });
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)); } catch (e) {}
+  if (cache && cache.uid === currentUser.uid && Date.now() - cache.fullAt < FULL_EVERY && cache.rows.length) {
+    rows = cache.rows.map((r) => ({ ...r, t: new Date(r.t) }));
+    fullAt = cache.fullAt;
+    const from = new Date(rows[rows.length - 1].t.getTime() - OVERLAP);
+    const snap = await getDocs(query(collection(db, 'maalinger'), where('t', '>=', from), orderBy('t')));
+    mergeRows(snap.docs.map(fromDoc));
+  } else {
+    const snap = await getDocs(query(collection(db, 'maalinger'), orderBy('t')));
+    rows = snap.docs.map(fromDoc);
+    fullAt = Date.now();
+  }
+  writeCache();
 }
 
 async function saveRows(newRows) {
@@ -172,8 +214,11 @@ async function sync(everything) {
     }
     const known = new Set(rows.map((r) => r.id));
     const fresh = fetched.filter((r) => !known.has(r.id));
-    if (fresh.length) await saveRows(fresh);
-    await loadRows();
+    if (fresh.length) {
+      await saveRows(fresh);
+      mergeRows(fresh); // lagret nå, så ingen grunn til å lese alt på nytt
+      writeCache();
+    }
     render();
     const done = fresh.length ? `Hentet ${fresh.length} nye målinger.` : 'Ingen nye målinger.';
     say(problems.length ? `${done} Feil: ${problems.join(' · ')}` : done);
@@ -462,6 +507,8 @@ if (!configured) {
     $('sync-all').hidden = !user || !googleClientId;
     if (!user) {
       $('content').hidden = true;
+      rows = [];
+      clearCache();
       say('Appen er privat.', true);
       return;
     }

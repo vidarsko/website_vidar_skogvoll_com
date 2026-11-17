@@ -59,6 +59,23 @@ main { grid-template-columns: minmax(0, 1fr); }
 .sak-apne:focus-visible { outline: none; }
 .sak-apne:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* «Lest»: samme knapp og samme bredde før og etter, bare ikonet bytter. En lest sak blir
+   dempet der den står, og er borte neste gang avisa lastes. */
+.sak { grid-template-rows: auto auto 1fr auto; }
+.sak-bunn { display: flex; justify-content: flex-end; }
+.lest-btn {
+  position: relative; z-index: 1; /* over den klikkbare flaten som åpner saken */
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 14px;
+}
+.lest-btn .ikon-lest { display: none; }
+.lest-btn[aria-pressed="true"] .ikon-ulest { display: none; }
+.lest-btn[aria-pressed="true"] .ikon-lest { display: block; color: var(--success); }
+.sak.er-lest { opacity: 0.55; }
+.sak.er-lest:hover, .sak.er-lest:focus-within { opacity: 0.85; }
+.tom { grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 32px 16px; }
+.eldre-blokk { display: grid; gap: 12px; margin-top: 8px; }
+.eldre-blokk > h2 { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+
 /* Hele saken, i en dialog over siden */
 .sak-dialog {
   width: min(680px, calc(100% - 32px)); max-height: calc(100% - 48px); margin: auto; padding: 0;
@@ -83,6 +100,8 @@ main { grid-template-columns: minmax(0, 1fr); }
 .kilder a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 .kilder a:hover { text-decoration-thickness: 2px; }
 .kilde-dato { color: var(--text-muted); margin-left: 6px; white-space: nowrap; }
+.dialog-bunn { display: flex; justify-content: flex-end; }
+.btn-primary.lest-btn[aria-pressed="true"] .ikon-lest { color: inherit; }
 
 @media (max-width: 600px) {
   .dag-head h1 { font-size: 24px; }
