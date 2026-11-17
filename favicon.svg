@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- vidar.skogvoll.com: a small v with an amber full stop, on the same near-black panel as skogvoll.com.
+       Chosen 2026-11-17 as "vidar 5" from the proposals in the vault note "Ikoner til nettsidene - 2026-11-17". -->
+  <rect width="32" height="32" rx="7" fill="#0A0908"/><path d="M6.00 10.00 L12.50 24.00 L19.00 10.00" fill="none" stroke="#F5F3EF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24.50" cy="22.30" r="2.9" fill="#E8A15E"/></svg>
