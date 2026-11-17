@@ -1,0 +1,95 @@
+/* Avisa: bare det som ikke finnes i /css/style.css. */
+
+/* Seksjonsfargene: seks plasser, og utgaven sier hvilken plass hver seksjon får
+   (seksjoner[].farge), så samme seksjon har samme farge fra dag til dag. Fargen står
+   alltid ved seksjonsnavnet og bærer aldri mening alene. Samme toner som kaloriappen. */
+:root {
+  --sek-1: #2a78d6; --sek-2: #e05a26; --sek-3: #1a9a6c;
+  --sek-4: #c98500; --sek-5: #d55181; --sek-6: #7656e8;
+}
+html[data-theme="dark"] {
+  --sek-1: #5b9cf0; --sek-2: #f07a45; --sek-3: #2fc48e;
+  --sek-4: #f0b429; --sek-5: #ec7fa8; --sek-6: #9b85f5;
+}
+.sek-1 { --c: var(--sek-1); } .sek-2 { --c: var(--sek-2); } .sek-3 { --c: var(--sek-3); }
+.sek-4 { --c: var(--sek-4); } .sek-5 { --c: var(--sek-5); } .sek-6 { --c: var(--sek-6); }
+
+main { grid-template-columns: minmax(0, 1fr); }
+[hidden] { display: none !important; }
+.avis { display: grid; gap: 20px; }
+
+/* Dagen, med piler til forrige og neste utgave */
+.dag { display: flex; align-items: center; gap: 8px; }
+.dag-head { flex: 1; min-width: 0; display: grid; gap: 4px; text-align: center; }
+.dag-head h1 { font-size: 32px; font-weight: 800; line-height: 1.2; }
+.ingress { color: var(--text-muted); max-width: 60ch; margin: 0 auto; }
+.nav-btn {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none; cursor: pointer;
+  border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface);
+}
+.nav-btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); }
+.nav-btn:disabled { opacity: 0.4; cursor: default; }
+
+.filter { justify-self: center; }
+.filter .swatch { background: var(--c); }
+
+/* Sakene: den viktigste over hele bredden, resten i kolonner */
+.saker { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.sak {
+  position: relative; display: grid; gap: 8px; align-content: start; padding: 20px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  transition: border-color 0.15s, background 0.15s;
+}
+.sak:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.sak.hoved { grid-column: 1 / -1; padding: 28px; }
+.sak-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--text-muted); }
+.sak-meta .swatch { background: var(--c); }
+.sak-seksjon { font-weight: 600; color: var(--text); }
+.sak-tittel { font-size: 20px; font-weight: 700; line-height: 1.3; }
+.sak.hoved .sak-tittel { font-size: 28px; line-height: 1.2; }
+.sak-tekst { font-size: 15px; }
+.sak.hoved .sak-tekst { font-size: 17px; max-width: 70ch; }
+
+/* Hele kortet er klikkbart: knappen i tittelen strekkes over kortet. */
+.sak-apne {
+  border: 0; background: none; padding: 0; margin: 0; cursor: pointer;
+  font: inherit; color: inherit; text-align: left;
+}
+.sak-apne::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius); }
+.sak-apne:focus-visible { outline: none; }
+.sak-apne:focus-visible::after { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Hele saken, i en dialog over siden */
+.sak-dialog {
+  width: min(680px, calc(100% - 32px)); max-height: calc(100% - 48px); margin: auto; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
+}
+.sak-dialog::backdrop { background: rgba(10, 9, 8, 0.55); }
+.dialog-inner { display: grid; gap: 16px; padding: 24px; }
+.dialog-top { display: flex; align-items: flex-start; gap: 12px; }
+.lukk {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none; margin-left: auto; margin-top: -8px; margin-right: -8px;
+  border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); cursor: pointer;
+}
+.lukk:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.sak-dialog h2 { font-size: 26px; font-weight: 800; line-height: 1.25; }
+.sak-dialog h3 { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+.d-tekst { display: grid; gap: 12px; font-size: 16px; }
+.d-tekst p:first-child { font-size: 17px; font-weight: 500; }
+.hvorfor { padding: 12px 16px; border-radius: var(--radius-sm); background: var(--surface-hover); font-size: 15px; }
+.kilder { list-style: none; display: grid; gap: 6px; font-size: 15px; }
+.kilder a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.kilder a:hover { text-decoration-thickness: 2px; }
+.kilde-dato { color: var(--text-muted); margin-left: 6px; white-space: nowrap; }
+
+@media (max-width: 600px) {
+  .dag-head h1 { font-size: 24px; }
+  .saker { grid-template-columns: 1fr; }
+  .sak.hoved { padding: 20px; }
+  .sak.hoved .sak-tittel { font-size: 22px; }
+  .sak.hoved .sak-tekst { font-size: 15px; }
+  .dialog-inner { padding: 20px; }
+  .sak-dialog h2 { font-size: 22px; }
+}
