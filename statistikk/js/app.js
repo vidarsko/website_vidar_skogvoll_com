@@ -45,7 +45,13 @@
   // The last day in the daily series is always the day the workflow ran, since
   // build_stats.py asks for data up to the hour after the run: that day isn't over.
   // Weekly series never have an unfinished bar, since the running week is left out.
-  function isPending(points, i) { return state.period <= 90 && i === points.length - 1; }
+  // A site whose last fetch failed shows the data from the last fetch that worked (stale: true,
+  // set by tools/push_stats.py). Its last day is old, so it isn't marked as unfinished.
+  function isPending(points, i, stale) { return !stale && state.period <= 90 && i === points.length - 1; }
+  function staleNote(s) {
+    return el('div', 'tile-stale', 'Tall fra ' + stampFmt.format(new Date(s.fetched_at)) +
+      '. Siste henting feilet (' + s.error + ').');
+  }
 
   // A column with a rounded top and a square foot on the baseline.
   function barPath(x, base, w, h, r) {
@@ -105,7 +111,7 @@
     pts.forEach(function (p, i) {
       if (!p.n) return;
       var bar = svgEl('path', { d: barPath(i * slot + (slot - bw) / 2, H, bw, p.n / max * (H - pad), 2),
-        'class': 'spark-bar' + (isPending(pts, i) ? ' pending' : '') });
+        'class': 'spark-bar' + (isPending(pts, i, series.stale) ? ' pending' : '') });
       bar.style.fill = color(series.code);
       svg.appendChild(bar);
     });
@@ -147,6 +153,7 @@
       card.appendChild(el('div', 'site-unit', 'besøkende siste ' + PERIOD_LABEL[state.period]));
       card.appendChild(deltaLine(p));
       card.appendChild(sparkline(seriesFor([s])[0]));
+      if (s.stale) card.appendChild(staleNote(s));
       card.setAttribute('aria-label', s.label + ': ' + num.format(p.visitors) + ' besøkende siste ' +
         PERIOD_LABEL[state.period] + '. Vis detaljer.');
       box.appendChild(card);
@@ -179,6 +186,7 @@
     tile('Besøkende', num.format(p.visitors), deltaLine(p));
     tile('Snitt per dag', num.format(Math.round(p.visitors / Math.max(days.length, 1))));
     tile('Travleste dag', num.format(best.n), best.d ? el('div', 'tile-delta', longFmt.format(parseDay(best.d))) : null);
+    if (s.stale) box.firstChild.appendChild(staleNote(s));
   }
 
   // ---- Trend chart -----------------------------------------------------------
@@ -192,14 +200,14 @@
       (weekly ? s.weekly.slice(-52) : s.daily.slice(-state.period)).forEach(function (r) {
         byX[weekly ? r.week : r.d] = r.n;
       });
-      return { code: s.code, label: s.label, byX: byX };
+      return { code: s.code, label: s.label, stale: !!s.stale, byX: byX };
     });
     // Align every series on the same x values, so a site with a shorter history reads as 0.
     var seen = {};
     raw.forEach(function (s) { Object.keys(s.byX).forEach(function (x) { seen[x] = true; }); });
     var xs = Object.keys(seen).sort().slice(weekly ? -52 : -state.period);
     return raw.map(function (s) {
-      return { code: s.code, label: s.label, points: xs.map(function (x) { return { x: x, n: s.byX[x] || 0 }; }) };
+      return { code: s.code, label: s.label, stale: s.stale, points: xs.map(function (x) { return { x: x, n: s.byX[x] || 0 }; }) };
     });
   }
 
@@ -287,7 +295,7 @@
       s.points.forEach(function (p, i) {
         if (!p.n) return;
         var bar = svgEl('path', { d: barPath(m.left + i * slot + x0, m.top + ih, bw, p.n / max * ih, 4),
-          'class': 'bar' + (isPending(s.points, i) ? ' pending' : '') });
+          'class': 'bar' + (isPending(s.points, i, s.stale) ? ' pending' : '') });
         bar.style.fill = color(s.code);
         svg.appendChild(bar);
       });
@@ -302,7 +310,7 @@
       band.setAttribute('x', m.left + i * slot);
       band.setAttribute('visibility', 'visible');
       var title = weekly ? 'Uka fra ' + longFmt.format(parseDay(xs[i])) : longFmt.format(parseDay(xs[i]));
-      if (isPending(xs, i)) title += ' · ikke ferdig, tall fra kl. ' + timeFmt.format(new Date(data.generated_at));
+      if (isPending(xs, i, series.some(function (s) { return s.stale; }))) title += ' · ikke ferdig, tall fra kl. ' + timeFmt.format(new Date(data.generated_at));
       showTooltip(title, series.map(function (s) {
         return { code: s.code, label: s.label, value: num.format(s.points[i].n) };
       }), clientX, clientY);
@@ -339,7 +347,7 @@
     series[0].points.slice().reverse().forEach(function (p, ri) {
       var i = series[0].points.length - 1 - ri;
       var tr = el('tr');
-      tr.appendChild(el('td', null, longFmt.format(parseDay(p.x)) + (isPending(series[0].points, i) ? ' (ikke ferdig)' : '')));
+      tr.appendChild(el('td', null, longFmt.format(parseDay(p.x)) + (isPending(series[0].points, i, series[0].stale) ? ' (ikke ferdig)' : '')));
       series.forEach(function (s) { tr.appendChild(el('td', null, num.format(s.points[i].n))); });
       table.appendChild(tr);
     });

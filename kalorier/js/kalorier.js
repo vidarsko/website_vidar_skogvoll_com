@@ -9,6 +9,8 @@
 //   t (tid), kat (kategori-id), kcal (+ mat, − trening, netto),
 //   notat (valgfritt; Lose It-navnet på importerte rader), kilde ('app' | 'loseit'), lagret.
 // Lose It-historikken ble importert én gang 2026-11-16; importen ble fjernet etterpå (se git-historikken).
+// «Dagens tanke» over rutenettet kommer fra private/motivasjon, skrevet hver natt av den nattlige
+// jobben i vaulten via workflowen motivasjon.yml. Teksten er Vidars og står ikke her.
 // Se kalorier_private/AGENTS.md.
 
 import {
@@ -121,6 +123,34 @@ async function loadSetup() {
   cats.clear();
   for (const c of setup.kategorier) cats.set(c.id, c);
   return true;
+}
+
+// Dagens tanke: vises når lappen er fra i dag eller i går. Åpen til Vidar lukker den;
+// da huskes det for den lappen, så neste natts lapp åpner seg igjen.
+async function loadTanke() {
+  const snap = await getDoc(doc(db, 'private', 'motivasjon'));
+  if (!snap.exists()) return;
+  const lapp = JSON.parse(snap.data().json);
+  const fersk = [dayKey(new Date()), dayKey(addDays(new Date(), -1))];
+  if (!fersk.includes(lapp.dato)) return;
+  $('tanke-tittel').textContent = lapp.tittel;
+  $('tanke-tekst').replaceChildren(...lapp.tekst.split(/\n\s*\n/).map((avsnitt) => {
+    const p = document.createElement('p');
+    p.textContent = avsnitt.trim();
+    return p;
+  }));
+  $('tanke-regel').textContent = lapp.huskeregel || '';
+  $('tanke-regel').hidden = !lapp.huskeregel;
+  let lukket = null;
+  try { lukket = localStorage.getItem('tanke-lukket'); } catch (e) {}
+  $('tanke').open = lukket !== lapp.dato;
+  $('tanke').hidden = false;
+  $('tanke').addEventListener('toggle', () => {
+    try {
+      if ($('tanke').open) localStorage.removeItem('tanke-lukket');
+      else localStorage.setItem('tanke-lukket', lapp.dato);
+    } catch (e) {}
+  });
 }
 
 // Henter alt fra og med `from` som ikke allerede er lastet.
@@ -484,6 +514,7 @@ if (!configured) {
       say('');
       renderGrids();
       render();
+      loadTanke().catch(() => {}); // en manglende lapp skal aldri stoppe appen
     } catch (err) {
       say(err && err.code === 'permission-denied'
         ? 'Ingen tilgang. Er de nye reglene for matlogg og kalorioppsett limt inn i Firebase?'

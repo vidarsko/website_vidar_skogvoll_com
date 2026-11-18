@@ -197,6 +197,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 64px; display: grid;
 .tile-delta .up { color: var(--success); font-weight: 600; }
 .tile-delta .down { color: var(--danger); font-weight: 600; }
 .tile-error { font-size: 14px; color: var(--danger); }
+.tile-stale { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
 
 .panel { padding: 20px; min-width: 0; }
 .panel-head { margin-bottom: 12px; }
