@@ -9,9 +9,10 @@
 // Historikken 2014-2026 fra Vidars regneark ligger også i «maalinger» (kilde «regneark» og
 // «regneark-ifttt»). Har Google en veiing samme dag, vises ikke regnearkets.
 //
-// Analysene er de fra regnearkets ark 2: trend som lokal lineær regresjon over N målinger før og
-// M etter hvert punkt (FORECAST), vektderivert som stigningstallet i samme vindu (g/dag), og
-// avvik fra trend per ukedag. Se vekt_private/AGENTS.md.
+// Analysene: trend som gaussisk glatting (lokal lineær regresjon med gaussiske vekter i tid,
+// bredde σ fra en slider), vektendring som stigningstallet til samme linje (g/uke), og avvik fra
+// trend per ukedag. Til 2026-11-19 var trenden regnearkets FORECAST over N målinger før og M
+// etter. Se vekt_private/AGENTS.md.
 
 import {
   getFirestore, collection, doc, getDocs, writeBatch, query, orderBy, where,
@@ -231,14 +232,23 @@ async function sync(everything) {
 }
 
 
-// ---- Analyse (regnearkets ark 2) ----
+// ---- Analyse ----
 
 const DAY = 864e5;
 const SETTINGS_KEY = 'vekt-innstillinger';
-const PERIODS = [['90', '90 dager'], ['365', '1 år'], ['730', '2 år'], ['1825', '5 år'], ['all', 'Alt']];
+const PERIODS = [['30', '30 dager'], ['90', '90 dager'], ['365', '1 år'], ['730', '2 år'], ['1825', '5 år'], ['all', 'Alt']];
 const WEEKDAYS = ['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lørdag', 'Søndag'];
-let settings = { period: '365', before: 30, after: 30 };
-try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+// Glattingen: σ i dager, fra 1 til 120. Slideren går 0-100 på log-skala, så de små verdiene,
+// der forskjellene synes, får like mye plass som de store.
+const SIGMA_MIN = 1, SIGMA_MAX = 120;
+const sigmaAt = (pos) => Math.round(SIGMA_MIN * Math.pow(SIGMA_MAX / SIGMA_MIN, pos / 100));
+const posOf = (sigma) => Math.round((100 * Math.log(sigma / SIGMA_MIN)) / Math.log(SIGMA_MAX / SIGMA_MIN));
+let settings = { period: '365', sigma: 14 };
+try {
+  const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+  if (saved.period) settings.period = saved.period;
+  if (Number.isFinite(saved.sigma)) settings.sigma = Math.min(SIGMA_MAX, Math.max(SIGMA_MIN, saved.sigma));
+} catch (e) {}
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {} }
 
 const dayKey = (t) => t.toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
@@ -251,26 +261,33 @@ function cleanWeights() {
   return all.filter((r) => !(isSheet(r) && googleDays.has(dayKey(r.t)))).sort((a, b) => a.t - b.t);
 }
 
-// Lokal lineær regresjon: for punkt i, tilpass en rett linje til målingene i-before … i+after.
-// trend = linjens verdi i punktet (regnearkets FORECAST), deriv = stigningstallet i g/dag (SLOPE*1000).
-function trendOf(points, before, after) {
+// Gaussisk glatting: for hvert punkt en rett linje tilpasset målingene rundt, vektet med
+// exp(−½(Δt/σ)²) etter avstanden i tid. Linja (ikke bare et vektet snitt) gjør at trenden ved
+// siste veiing ikke dras mot eldre verdier, og stigningstallet er vektendringen.
+// trend = linjens verdi i punktet, deriv = stigningen i gram per uke. Målinger lenger unna enn
+// 3σ teller ikke (vekt under 1 %).
+function trendOf(points, sigma) {
   const xs = points.map((p) => p.t / DAY);
+  const reach = 3 * sigma;
+  let lo = 0, hi = 0;
   return points.map((p, i) => {
-    const lo = Math.max(0, i - before), hi = Math.min(points.length - 1, i + after);
-    let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    while (xs[i] - xs[lo] > reach) lo++;
+    while (hi + 1 < points.length && xs[hi + 1] - xs[i] <= reach) hi++;
+    let s0 = 0, s1 = 0, s2 = 0, t0 = 0, t1 = 0;
     for (let j = lo; j <= hi; j++) {
-      const x = xs[j] - xs[i], y = points[j].value;
-      n++; sx += x; sy += y; sxx += x * x; sxy += x * y;
+      const d = xs[j] - xs[i], w = Math.exp(-0.5 * (d / sigma) ** 2), y = points[j].value;
+      s0 += w; s1 += w * d; s2 += w * d * d; t0 += w * y; t1 += w * d * y;
     }
-    const den = n * sxx - sx * sx;
-    const b = den ? (n * sxy - sx * sy) / den : 0;
-    const a = (sy - b * sx) / n; // x = 0 i punktet selv
-    return { t: p.t, value: p.value, trend: a, deriv: b * 1000 };
+    const den = s0 * s2 - s1 * s1;
+    const b = den > 1e-9 * s0 * s0 ? (s0 * t1 - s1 * t0) / den : 0;
+    const a = (t0 - b * s1) / s0; // x = 0 i punktet selv
+    return { t: p.t, value: p.value, trend: a, deriv: b * 1000 * 7, raw: p };
   });
 }
 
 const fmt1 = (v) => v.toLocaleString('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt0 = (v) => Math.round(v).toLocaleString('nb-NO');
+const sign = (v) => (Math.round(v) > 0 ? '+' : Math.round(v) < 0 ? '−' : '');
 const dayFmt = new Intl.DateTimeFormat('nb-NO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 const timeFmt = new Intl.DateTimeFormat('nb-NO', { hour: '2-digit', minute: '2-digit' });
 
@@ -287,64 +304,93 @@ function render() {
   }
   renderControls();
 
-  const all = trendOf(weights, settings.before, settings.after);
+  const sigma = settings.sigma;
+  const all = trendOf(weights, sigma);
   const from = settings.period === 'all' ? weights[0].t : new Date(Date.now() - Number(settings.period) * DAY);
   const shown = all.filter((p) => p.t >= from);
-  const shownFat = fats.filter((p) => p.t >= from);
+  const fatAll = fats.length ? trendOf(fats, sigma) : [];
+  const shownFat = fatAll.filter((p) => p.t >= from);
   const last = all[all.length - 1];
 
   $('kpi-weight').textContent = fmt1(weights[weights.length - 1].value) + ' kg';
   $('kpi-weight-sub').textContent = when(weights[weights.length - 1]);
   $('kpi-trend').textContent = fmt1(last.trend) + ' kg';
-  $('kpi-trend-sub').textContent = `Trend med ${settings.before} målinger før og ${settings.after} etter`;
-  $('kpi-rate').textContent = (last.deriv > 0 ? '+' : last.deriv < 0 ? '−' : '') + fmt0(Math.abs(last.deriv)) + ' g/dag';
-  $('kpi-rate-sub').textContent = `${last.deriv > 0 ? '+' : last.deriv < 0 ? '−' : ''}${(Math.abs(last.deriv) * 7 / 1000).toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg per uke`;
+  $('kpi-trend-sub').textContent = `Gaussisk glatting, σ = ${sigma} ${sigma === 1 ? 'dag' : 'dager'}`;
+  $('kpi-rate').textContent = sign(last.deriv) + fmt0(Math.abs(last.deriv)) + ' g/uke';
+  const perMonth = (last.deriv * 30) / 7 / 1000;
+  $('kpi-rate-sub').textContent = `${perMonth > 0.005 ? '+' : perMonth < -0.005 ? '−' : ''}${Math.abs(perMonth).toLocaleString('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg per 30 dager`;
   if (fats.length) {
     $('kpi-fat').textContent = fmt1(fats[fats.length - 1].value) + ' %';
     $('kpi-fat-sub').textContent = when(fats[fats.length - 1]);
   }
 
   const range = [shown.length ? shown[0].t : from, new Date()];
+  const days = dayGroups(shown, fats);
   lineChart($('chart-weight'), range, [
     { pts: shown.map((p) => ({ t: p.t, v: p.value })), cls: 'weight-dot', dots: true },
     { pts: shown.map((p) => ({ t: p.t, v: p.trend })), cls: 'weight-trend' },
-  ], { unit: 'kg' });
+  ], { unit: 'kg', portrait: true, hover: { days, mark: (d) => d.trend } });
   lineChart($('chart-deriv'), range, [
     { pts: shown.map((p) => ({ t: p.t, v: p.deriv })), cls: 'deriv-line' },
-  ], { unit: 'g/dag', zero: true });
+  ], { unit: 'g/uke', zero: true, hover: { days, mark: (d) => d.deriv } });
   weekdayChart($('chart-weekday'), shown);
   if (shownFat.length) {
-    const fatTrend = trendOf(shownFat, Math.min(settings.before, 15), Math.min(settings.after, 15));
     lineChart($('chart-fat'), range, [
       { pts: shownFat.map((p) => ({ t: p.t, v: p.value })), cls: 'fat-dot', dots: true },
-      { pts: fatTrend.map((p) => ({ t: p.t, v: p.trend })), cls: 'fat-trend' },
+      { pts: shownFat.map((p) => ({ t: p.t, v: p.trend })), cls: 'fat-trend' },
     ], { unit: '%' });
     $('fat-panel').hidden = false;
   } else {
     $('fat-panel').hidden = true;
   }
-  renderMass(weights, shownFat, range);
-  $('period-sub').textContent = `${shown.length} veiinger i perioden`;
+  renderMass(weights, fats, from, range);
+  $('period-sub').textContent = `${shown.length} veiinger i perioden. Hold over grafen for å se dagen.`;
   renderList(weights, fats);
 }
 
+// Én oppføring per dag med veiing, for hover: trenden og vektendringen ved dagens siste
+// veiing, og alle veiingene den dagen (med fettprosent fra samme veiing, når den finnes).
+function dayGroups(shown, fats) {
+  const fatAt = new Map(fats.map((f) => [Math.round(f.t / 6e4), f.value]));
+  const byDay = new Map();
+  for (const p of shown) {
+    const k = dayKey(p.t);
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k).push(p);
+  }
+  return [...byDay.values()].map((ps) => {
+    const end = ps[ps.length - 1];
+    const lines = ps.map((p) => {
+      const fat = fatAt.get(Math.round(p.t / 6e4));
+      const time = hasTime(p.raw) ? timeFmt.format(p.t) : 'Veiing';
+      return [time, fmt1(p.value) + ' kg' + (fat != null ? ' · ' + fmt1(fat) + ' %' : '')];
+    });
+    return {
+      t: end.t, trend: end.trend, deriv: end.deriv,
+      title: dayFmt.format(end.t),
+      rows: [['Trend', fmt1(end.trend) + ' kg', 'trend'], ['Endring', sign(end.deriv) + fmt0(Math.abs(end.deriv)) + ' g/uke', 'deriv'],
+        ...lines.map(([a, b]) => [a, b, 'dot'])],
+    };
+  });
+}
+
 // Fettmasse og fettfri masse: for hver fettmåling, vekta fra samme veiing (samme minutt).
-function renderMass(weights, fatsInPeriod, range) {
+function renderMass(weights, fats, from, range) {
   const weightAt = new Map(weights.map((w) => [Math.round(w.t / 6e4), w.value]));
   const fatMass = [], lean = [];
-  for (const f of fatsInPeriod) {
+  for (const f of fats) {
     const w = weightAt.get(Math.round(f.t / 6e4));
     if (w == null) continue;
     fatMass.push({ t: f.t, value: (w * f.value) / 100 });
     lean.push({ t: f.t, value: w - (w * f.value) / 100 });
   }
-  $('mass-panels').hidden = !fatMass.length;
-  if (!fatMass.length) return;
-  const n = Math.min(settings.before, 15), m = Math.min(settings.after, 15);
+  const any = fatMass.some((p) => p.t >= from);
+  $('mass-panels').hidden = !any;
+  if (!any) return;
   for (const [series, el, sub, cls] of [[fatMass, 'chart-fatmass', 'fatmass-sub', 'fat'], [lean, 'chart-lean', 'lean-sub', 'lean']]) {
-    const tr = trendOf(series, n, m);
+    const tr = trendOf(series, settings.sigma).filter((p) => p.t >= from);
     lineChart($(el), range, [
-      { pts: series.map((p) => ({ t: p.t, v: p.value })), cls: cls + '-dot', dots: true },
+      { pts: tr.map((p) => ({ t: p.t, v: p.value })), cls: cls + '-dot', dots: true },
       { pts: tr.map((p) => ({ t: p.t, v: p.trend })), cls: cls + '-trend' },
     ], { unit: 'kg' });
     const first = tr[0].trend, last = tr[tr.length - 1].trend, d = last - first;
@@ -362,20 +408,22 @@ function renderControls() {
       b.addEventListener('click', () => { settings.period = value; saveSettings(); render(); });
       seg.append(b);
     }
-    for (const id of ['before', 'after']) {
-      const input = $(id);
-      input.value = settings[id];
-      input.addEventListener('input', () => {
-        settings[id] = Number(input.value);
-        $(id + '-out').textContent = input.value;
-        saveSettings();
-        render();
-      });
-    }
+    const input = $('smooth');
+    input.value = posOf(settings.sigma);
+    let frame = 0;
+    input.addEventListener('input', () => {
+      settings.sigma = sigmaAt(Number(input.value));
+      $('smooth-out').textContent = sigmaText();
+      saveSettings();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(render);
+    });
   }
   for (const b of seg.children) b.setAttribute('aria-checked', String(b.dataset.value === settings.period));
-  for (const id of ['before', 'after']) $(id + '-out').textContent = settings[id];
+  $('smooth-out').textContent = sigmaText();
+  $('smooth').setAttribute('aria-valuetext', sigmaText());
 }
+const sigmaText = () => `σ = ${settings.sigma} ${settings.sigma === 1 ? 'dag' : 'dager'}`;
 
 // ---- Grafer ----
 
@@ -403,14 +451,20 @@ function niceStep(span, target) {
   return 10 * mag;
 }
 
+// Stående format for vektgrafen: dobbelt så høy som bred, men aldri høyere enn skjermen.
+function chartHeight(W, portrait) {
+  if (!portrait) return 260;
+  return Math.round(Math.min(2 * W, Math.max(440, window.innerHeight - 140)));
+}
+
 function lineChart(el, [t0, t1], series, opts) {
   const vals = series.flatMap((s) => s.pts.map((p) => p.v)).filter(Number.isFinite);
   if (!vals.length) { el.textContent = 'Ingen data i perioden.'; return; }
-  const W = Math.max(320, el.clientWidth || 800), H = 260, L = 48, R = 12, T = 12, B = 28;
+  const W = Math.max(280, el.clientWidth || 800), H = chartHeight(W, opts.portrait), L = 48, R = 12, T = 12, B = 28;
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (opts.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
   if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
-  const step = niceStep(hi - lo, 5);
+  const step = niceStep(hi - lo, Math.max(5, Math.round(H / 70)));
   lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
   const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
   const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
@@ -421,9 +475,10 @@ function lineChart(el, [t0, t1], series, opts) {
   }
   const long = t1 - t0 > 400 * DAY;
   const xf = new Intl.DateTimeFormat('nb-NO', long ? { month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
-  for (let i = 0; i <= 4; i++) {
-    const t = new Date(t0.getTime() + (i / 4) * (t1 - t0));
-    add('text', { x: x(t), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === 4 ? 'end' : 'middle' }, xf.format(t));
+  const ticks = W < 420 ? 2 : 4;
+  for (let i = 0; i <= ticks; i++) {
+    const t = new Date(t0.getTime() + (i / ticks) * (t1 - t0));
+    add('text', { x: x(t), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === ticks ? 'end' : 'middle' }, xf.format(t));
   }
   for (const s of series) {
     if (s.dots) {
@@ -440,7 +495,69 @@ function lineChart(el, [t0, t1], series, opts) {
       flush();
     }
   }
+  if (opts.hover && opts.hover.days.length) addHover(el, add, { W, H, T, B, L, R, x, y }, opts.hover);
 }
+
+// Hold over grafen (eller dra med fingeren): en loddrett strek ved nærmeste dag med veiing, en
+// ring på kurven og en boks med trenden og dagens veiinger.
+function addHover(el, add, g, { days, mark }) {
+  const line = add('line', { class: 'hover-line', y1: g.T, y2: g.H - g.B, visibility: 'hidden' });
+  const ring = add('circle', { class: 'hover-dot', r: 5, visibility: 'hidden' });
+  const hit = add('rect', { class: 'hover-hit', x: g.L, y: 0, width: g.W - g.L - g.R, height: g.H });
+  const svg = el.firstChild;
+  const xs = days.map((d) => g.x(d.t));
+  const show = (ev) => {
+    const box = svg.getBoundingClientRect();
+    const px = ((ev.clientX - box.left) * g.W) / box.width;
+    let i = 0, best = Infinity;
+    for (let k = 0; k < xs.length; k++) { const d = Math.abs(xs[k] - px); if (d < best) { best = d; i = k; } }
+    const d = days[i];
+    line.setAttribute('x1', xs[i]); line.setAttribute('x2', xs[i]);
+    ring.setAttribute('cx', xs[i]); ring.setAttribute('cy', g.y(mark(d)));
+    line.setAttribute('visibility', 'visible'); ring.setAttribute('visibility', 'visible');
+    showTip(d, ev.clientX, ev.clientY);
+  };
+  const hide = () => {
+    line.setAttribute('visibility', 'hidden'); ring.setAttribute('visibility', 'hidden');
+    $('tooltip').hidden = true;
+  };
+  hit.addEventListener('pointermove', show);
+  hit.addEventListener('pointerdown', show);
+  hit.addEventListener('pointerleave', (ev) => { if (ev.pointerType !== 'touch') hide(); });
+  el._hideHover = hide;
+}
+
+function showTip(d, cx, cy) {
+  const tip = $('tooltip');
+  tip.replaceChildren();
+  const title = document.createElement('div');
+  title.className = 'tt-title'; title.textContent = d.title;
+  tip.append(title);
+  for (const [label, value, kind] of d.rows) {
+    const row = document.createElement('div');
+    row.className = 'tt-row';
+    const i = document.createElement('i'); i.className = 'tt-' + kind;
+    const b = document.createElement('b'); b.textContent = value;
+    const s = document.createElement('span'); s.textContent = label;
+    row.append(i, s, b);
+    tip.append(row);
+  }
+  tip.hidden = false;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let left = cx + 16, top = cy + 16;
+  if (left + w > window.innerWidth - 8) left = cx - w - 16;
+  if (top + h > window.innerHeight - 8) top = cy - h - 16;
+  tip.style.left = Math.max(8, left) + 'px';
+  tip.style.top = Math.max(8, top) + 'px';
+}
+
+// Et trykk utenfor grafene skjuler boksen (på telefon finnes ingen «mus forlater»).
+document.addEventListener('pointerdown', (ev) => {
+  if (!ev.target.closest || !ev.target.closest('.hover-hit')) {
+    for (const c of document.querySelectorAll('.chart')) if (c._hideHover) c._hideHover();
+  }
+});
+document.addEventListener('scroll', () => { $('tooltip').hidden = true; }, { passive: true });
 
 // Avvik fra trend (vekt − trend) i snitt per ukedag, som regnearkets søylediagram.
 function weekdayChart(el, points) {

@@ -238,6 +238,17 @@ th, td { padding: 4px 12px 4px 0; text-align: right; border-bottom: 1px solid va
 th:first-child, td:first-child { text-align: left; }
 th { font-weight: 600; }
 
+/* Google-søk (Search Console) i statistikken */
+.site-search { font-size: 13px; color: var(--text-muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.search-chart { margin-top: 16px; }
+#search-kpis .tile { background: var(--bg); }
+.search-table { width: 100%; font-size: 14px; }
+.search-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.search-table td:first-child .swatch { display: inline-block; margin-right: 8px; }
+.search-table a.link { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+.search-table a.link:hover { color: var(--accent); }
+#search-overview[hidden], #search-detail[hidden], #gc-detail[hidden] { display: none; }
+
 .tooltip {
   position: fixed; z-index: 50; pointer-events: none;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);

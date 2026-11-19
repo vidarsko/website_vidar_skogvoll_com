@@ -153,6 +153,8 @@
       card.appendChild(el('div', 'site-unit', 'besøkende siste ' + PERIOD_LABEL[state.period]));
       card.appendChild(deltaLine(p));
       card.appendChild(sparkline(seriesFor([s])[0]));
+      var sl = searchLine(s.code);
+      if (sl) card.appendChild(sl);
       if (s.stale) card.appendChild(staleNote(s));
       card.setAttribute('aria-label', s.label + ': ' + num.format(p.visitors) + ' besøkende siste ' +
         PERIOD_LABEL[state.period] + '. Vis detaljer.');
@@ -390,6 +392,209 @@
       : '';
   }
 
+  // ---- Google-søk (Search Console) -------------------------------------------
+  //
+  // data.search kommer fra tools/searchconsole_stats.py: per domene en daglig serie
+  // [dato, klikk, visninger, plassering] og ferdig filtrerte topplister per periode. Perioden
+  // regnes bakover fra siste dag Google har data for (to-tre dager bak), ikke fra i dag.
+
+  var pct = new Intl.NumberFormat('nb-NO', { style: 'percent', maximumFractionDigits: 1 });
+  var dec1 = new Intl.NumberFormat('nb-NO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function searchSites() { return (data.search && data.search.sites) || []; }
+  function searchFor(site) {
+    return searchSites().filter(function (g) {
+      return state.site.indexOf('google:') === 0 ? 'google:' + g.domain === state.site : g.code === site;
+    })[0];
+  }
+  function searchHref(g) { return '#' + encodeURIComponent(g.code || 'google:' + g.domain); }
+  function addDays(iso, n) {
+    var d = parseDay(iso);
+    d.setDate(d.getDate() + n);
+    return d.toLocaleDateString('sv-SE');
+  }
+  // Summer over [from, to] i den daglige serien; plasseringen vektet med visninger.
+  function sumDays(g, from, to) {
+    var c = 0, i = 0, pw = 0;
+    g.daily.forEach(function (r) {
+      if (r[0] < from || r[0] > to) return;
+      c += r[1]; i += r[2]; pw += r[3] * r[2];
+    });
+    return { clicks: c, impressions: i, position: i ? pw / i : null };
+  }
+  function windowOf(g) {
+    var n = state.period;
+    return { to: g.last_date, from: addDays(g.last_date, -(n - 1)), prevTo: addDays(g.last_date, -n), prevFrom: addDays(g.last_date, -(2 * n - 1)) };
+  }
+  function searchSubText(g) {
+    return 'Search Console, ' + PERIOD_LABEL[state.period] + ' til og med ' + longFmt.format(parseDay(g.last_date)) +
+      '. Google ligger to-tre dager etter.' + (data.search.stale ? ' Siste henting feilet; tallene er fra ' +
+      stampFmt.format(new Date(data.search.generated_at)) + '.' : '');
+  }
+  function change(now, before) {
+    if (!before) return null;
+    var c = Math.round((now - before) / before * 100);
+    var d = el('div', 'tile-delta');
+    d.appendChild(el('span', c > 0 ? 'up' : c < 0 ? 'down' : '', (c > 0 ? '▲ +' : c < 0 ? '▼ ' : '') + c + ' %'));
+    d.appendChild(document.createTextNode(' mot forrige ' + PERIOD_LABEL[state.period]));
+    return d;
+  }
+
+  // Oversikten: én rad per domene i Search Console.
+  function renderSearchOverview() {
+    var box = $('search-overview');
+    var gs = searchSites();
+    box.hidden = !gs.length;
+    if (!gs.length) return;
+    $('so-sub').textContent = searchSubText(gs[0]);
+    var table = el('table', 'search-table');
+    var head = el('tr');
+    ['Domene', 'Klikk', 'Visninger', 'Klikkrate', 'Snittplass'].forEach(function (h) { head.appendChild(el('th', null, h)); });
+    table.appendChild(head);
+    gs.map(function (g) { var w = windowOf(g); return { g: g, p: sumDays(g, w.from, w.to) }; })
+      .sort(function (a, b) { return b.p.clicks - a.p.clicks || b.p.impressions - a.p.impressions; })
+      .forEach(function (r) {
+        var tr = el('tr');
+        var td = el('td');
+        var a = el('a', 'link', r.g.label);
+        a.href = searchHref(r.g);
+        if (r.g.code) td.appendChild(swatch(r.g.code));
+        td.appendChild(a);
+        tr.appendChild(td);
+        tr.appendChild(el('td', null, num.format(r.p.clicks)));
+        tr.appendChild(el('td', null, num.format(r.p.impressions)));
+        tr.appendChild(el('td', null, r.p.impressions ? pct.format(r.p.clicks / r.p.impressions) : '–'));
+        tr.appendChild(el('td', null, r.p.position != null ? dec1.format(r.p.position) : '–'));
+        table.appendChild(tr);
+      });
+    $('so-table').replaceChildren(table);
+  }
+
+  // Linja under sparklinen på kortene i oversikten.
+  function searchLine(code) {
+    var g = searchSites().filter(function (x) { return x.code === code; })[0];
+    if (!g) return null;
+    var w = windowOf(g), p = sumDays(g, w.from, w.to);
+    return el('div', 'site-search', 'Google-søk: ' + num.format(p.clicks) + ' klikk, ' + num.format(p.impressions) + ' visninger');
+  }
+
+  function renderSearchDetail(code) {
+    var g = searchFor(code);
+    $('search-detail').hidden = !g;
+    if (!g) return;
+    var w = windowOf(g), p = sumDays(g, w.from, w.to), prev = sumDays(g, w.prevFrom, w.prevTo);
+    $('search-sub').textContent = searchSubText(g);
+
+    var box = $('search-kpis');
+    box.replaceChildren();
+    function tile(label, value, extra, help) {
+      var t = el('article', 'tile');
+      t.appendChild(el('div', 'tile-label', label));
+      t.appendChild(el('div', 'tile-value', value));
+      if (extra) t.appendChild(extra);
+      if (help) t.title = help;
+      box.appendChild(t);
+    }
+    tile('Klikk', num.format(p.clicks), change(p.clicks, prev.clicks), 'Klikk fra Googles søkeresultater til siden');
+    tile('Visninger', num.format(p.impressions), change(p.impressions, prev.impressions), 'Hvor ofte en side herfra var med i et søkeresultat');
+    tile('Klikkrate', p.impressions ? pct.format(p.clicks / p.impressions) : '–', null, 'Klikk delt på visninger');
+    tile('Snittplassering', p.position != null ? dec1.format(p.position) : '–',
+      el('div', 'tile-delta', 'Lavere er bedre; 1 er øverst'), 'Gjennomsnittlig plass i søkeresultatene, vektet med visninger');
+
+    renderSearchChart(g, w);
+    var lists = g.periods[String(state.period)];
+    searchTable('queries', 'queries-hidden', lists ? lists.queries : [], lists ? lists.queries_hidden : null, 'q', 'Søk', 'søk');
+    searchTable('spages', 'spages-hidden', lists ? lists.pages : [], lists ? lists.pages_hidden : null, 'path', 'Side', 'sider');
+  }
+
+  function searchTable(id, noteId, rows, hidden, key, title, many) {
+    var box = $(id);
+    if (!rows.length) {
+      box.replaceChildren(el('p', 'empty', 'Ingenting over terskelen i denne perioden.'));
+    } else {
+      var table = el('table', 'search-table');
+      var head = el('tr');
+      [title, 'Klikk', 'Visn.', 'Plass'].forEach(function (h) { head.appendChild(el('th', null, h)); });
+      table.appendChild(head);
+      rows.forEach(function (r) {
+        var tr = el('tr');
+        tr.appendChild(el('td', 'search-name', r[key]));
+        tr.appendChild(el('td', null, num.format(r.clicks)));
+        tr.appendChild(el('td', null, num.format(r.impressions)));
+        tr.appendChild(el('td', null, dec1.format(r.position)));
+        table.appendChild(tr);
+      });
+      box.replaceChildren(table);
+    }
+    $(noteId).textContent = hidden && hidden.rows
+      ? 'Ytterligere ' + num.format(hidden.rows) + ' ' + many + ' (' + num.format(hidden.clicks) + ' klikk, ' +
+        num.format(hidden.impressions) + ' visninger) er utenfor topp 50. Søk Google anser som sjeldne, er ikke med i lista i det hele tatt.'
+      : '';
+  }
+
+  // Klikk per dag (per uke for 12 måneder) som søyler; visningene i tooltipen.
+  function renderSearchChart(g, w) {
+    var box = $('search-chart');
+    box.replaceChildren();
+    var byDay = {};
+    g.daily.forEach(function (r) { byDay[r[0]] = r; });
+    var pts = [];
+    var weekly = state.period > 90;
+    for (var d = w.from; d <= w.to; d = addDays(d, weekly ? 7 : 1)) {
+      var c = 0, im = 0;
+      for (var k = 0; k < (weekly ? 7 : 1); k++) {
+        var r = byDay[addDays(d, k)];
+        if (r && addDays(d, k) <= w.to) { c += r[1]; im += r[2]; }
+      }
+      pts.push({ x: d, c: c, i: im });
+    }
+    if (!pts.length) return;
+    var W = Math.max(box.clientWidth, 280), H = 180;
+    var m = { top: 12, right: 12, bottom: 28, left: 44 }, ih = H - m.top - m.bottom, iw = W - m.left - m.right;
+    var max = niceMax(Math.max.apply(null, pts.map(function (p) { return p.c; })));
+    var slot = iw / pts.length, bw = Math.min(24, slot - Math.min(2, slot * 0.25));
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img',
+      'aria-label': 'Klikk fra Google-søk per ' + (weekly ? 'uke' : 'dag') });
+    for (var t = 0; t <= 4; t++) {
+      var y = m.top + ih - t / 4 * ih;
+      svg.appendChild(svgEl('line', { x1: m.left, x2: m.left + iw, y1: y, y2: y, 'class': t === 0 ? 'baseline' : 'gridline' }));
+      var lab = svgEl('text', { x: m.left - 8, y: y + 4, 'text-anchor': 'end' });
+      lab.textContent = compact.format(max * t / 4);
+      svg.appendChild(lab);
+    }
+    var ticks = Math.min(pts.length, W < 560 ? 3 : 5);
+    for (var j = 0; j < ticks; j++) {
+      var i = Math.round(j * (pts.length - 1) / Math.max(ticks - 1, 1));
+      var tx = svgEl('text', { x: m.left + (i + 0.5) * slot, y: H - 8, 'text-anchor': j === 0 ? 'start' : j === ticks - 1 ? 'end' : 'middle' });
+      tx.textContent = dayFmt.format(parseDay(pts[i].x));
+      svg.appendChild(tx);
+    }
+    var band = svgEl('rect', { y: m.top, width: slot, height: ih, visibility: 'hidden', 'class': 'hover-band' });
+    svg.appendChild(band);
+    var fill = g.code ? color(g.code) : 'var(--accent)';
+    pts.forEach(function (p, i) {
+      if (!p.c) return;
+      var bar = svgEl('path', { d: barPath(m.left + i * slot + (slot - bw) / 2, m.top + ih, bw, p.c / max * ih, 3), 'class': 'bar' });
+      bar.style.fill = fill;
+      svg.appendChild(bar);
+    });
+    var hit = svgEl('rect', { x: m.left, y: m.top, width: iw, height: ih, 'class': 'hit' });
+    svg.appendChild(hit);
+    hit.addEventListener('pointermove', function (e) {
+      var r = svg.getBoundingClientRect();
+      var i = Math.max(0, Math.min(pts.length - 1, Math.floor(((e.clientX - r.left) * W / r.width - m.left) / slot)));
+      band.setAttribute('x', m.left + i * slot);
+      band.setAttribute('visibility', 'visible');
+      var p = pts[i];
+      showTooltip((weekly ? 'Uka fra ' : '') + longFmt.format(parseDay(p.x)), [
+        { code: g.code || 'none', label: 'klikk', value: num.format(p.c) },
+        { code: g.code || 'none', label: 'visninger', value: num.format(p.i) },
+      ], e.clientX, e.clientY);
+    });
+    hit.addEventListener('pointerleave', function () { band.setAttribute('visibility', 'hidden'); hideTooltip(); });
+    box.appendChild(svg);
+  }
+
   // ---- Tooltip ---------------------------------------------------------------
 
   function showTooltip(title, rows, x, y) {
@@ -418,7 +623,9 @@
   function render() {
     state.site = siteFromHash();
     var site = data.sites.filter(function (s) { return s.code === state.site; })[0];
-    if (!site) state.site = 'all';
+    // #google:<domene>: et domene som bare finnes i Search Console, ikke i GoatCounter.
+    var gOnly = !site && state.site.indexOf('google:') === 0 ? searchFor(null) : null;
+    if (!site && !gOnly) state.site = 'all';
     if (data.periods_days.indexOf(state.period) < 0) state.period = data.periods_days[1] || data.periods_days[0];
     try { localStorage.setItem('gc-view', JSON.stringify({ period: state.period })); } catch (e) {}
 
@@ -426,13 +633,19 @@
     $('overview').hidden = !overview;
     $('detail').hidden = overview;
     $('back').hidden = overview;
-    $('page-title').textContent = overview ? 'Alle sider' : site.label;
-    document.title = overview ? 'Besøksstatistikk' : site.label + ' · Besøksstatistikk';
+    var label = overview ? 'Alle sider' : site ? site.label : gOnly.label;
+    $('page-title').textContent = label;
+    document.title = overview ? 'Besøksstatistikk' : label + ' · Besøksstatistikk';
     renderFilters();
+    $('search-overview').hidden = true;
     if (overview) {
       renderOverview();
+      renderSearchOverview();
       return;
     }
+    $('gc-detail').hidden = !site;
+    renderSearchDetail(site ? site.code : null);
+    if (!site) return;
     renderKpis();
     renderTrend();
     renderBars('pages', 'pages-hidden', 'pages', 'pages_hidden', 'side', 'sider');
@@ -459,7 +672,7 @@
     var width = $('trend-chart').clientWidth;
     new ResizeObserver(function () {
       var w = $('trend-chart').clientWidth;
-      if (w && Math.abs(w - width) > 4) { width = w; renderTrend(); }
+      if (w && Math.abs(w - width) > 4) { width = w; renderTrend(); if (!$('search-detail').hidden) renderSearchDetail(state.site); }
     }).observe($('trend-chart'));
   };
 })();

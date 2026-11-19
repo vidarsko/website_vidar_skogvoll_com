@@ -7,7 +7,7 @@
   <meta name="referrer" content="no-referrer">
   <title>Besøksstatistikk</title>
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css?v=ef24591">
+  <link rel="stylesheet" href="/css/style.css?v=26101be">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -40,7 +40,17 @@
     <!-- Oversikten: én rute per nettsted, hver lenker til detaljene (#<kode>). -->
     <section class="site-grid" id="overview" aria-label="Nettstedene"></section>
 
+    <!-- Søkedata fra Google Search Console for alle domenene, også de uten GoatCounter. -->
+    <section class="panel" id="search-overview" aria-labelledby="so-title" hidden>
+      <div class="panel-head">
+        <h2 id="so-title">Fra Google-søk</h2>
+        <p class="panel-sub" id="so-sub"></p>
+      </div>
+      <div class="table-scroll" id="so-table"></div>
+    </section>
+
     <div class="detail" id="detail" hidden>
+    <div class="detail" id="gc-detail">
     <section class="kpis" id="kpis" aria-label="Nøkkeltall"></section>
 
     <section class="panel panel-wide" aria-labelledby="trend-title">
@@ -76,12 +86,43 @@
       </section>
     </div>
     </div>
+
+    <!-- Google-søk for denne siden (Search Console). Hentes i samme nattjobb. -->
+    <div class="detail" id="search-detail" hidden>
+      <section class="panel panel-wide" aria-labelledby="search-title">
+        <div class="panel-head">
+          <h2 id="search-title">Fra Google-søk</h2>
+          <p class="panel-sub" id="search-sub"></p>
+        </div>
+        <div class="kpis" id="search-kpis"></div>
+        <div class="chart search-chart" id="search-chart"></div>
+      </section>
+      <div class="grid-2">
+        <section class="panel" aria-labelledby="queries-title">
+          <div class="panel-head">
+            <h2 id="queries-title">Hva folk søker på</h2>
+            <p class="panel-sub">Søk som viste en side herfra, med klikk og snittplassering</p>
+          </div>
+          <div class="table-scroll" id="queries"></div>
+          <p class="hidden-note" id="queries-hidden"></p>
+        </section>
+        <section class="panel" aria-labelledby="spages-title">
+          <div class="panel-head">
+            <h2 id="spages-title">Sidene folk kommer til fra søk</h2>
+            <p class="panel-sub">Klikk og visninger i Google per side</p>
+          </div>
+          <div class="table-scroll" id="spages"></div>
+          <p class="hidden-note" id="spages-hidden"></p>
+        </section>
+      </div>
+    </div>
+    </div>
   </main>
 
   <div class="tooltip" id="tooltip" role="status" hidden></div>
 
   <script src="/js/theme.js"></script>
-  <script src="js/app.js?v=ef24591"></script>
-  <script type="module" src="js/load.js?v=ef24591"></script>
+  <script src="js/app.js?v=26101be"></script>
+  <script type="module" src="js/load.js?v=26101be"></script>
 </body>
 </html>

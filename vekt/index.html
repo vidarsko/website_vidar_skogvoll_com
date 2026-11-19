@@ -7,8 +7,8 @@
   <meta name="referrer" content="no-referrer">
   <title>Vekt</title>
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="css/vekt.css">
+  <link rel="stylesheet" href="/css/style.css?v=26101be">
+  <link rel="stylesheet" href="css/vekt.css?v=26101be">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -69,29 +69,28 @@
           <div class="seg" id="period" role="radiogroup" aria-label="Periode"></div>
         </div>
         <label class="control">
-          <span class="control-label">Målinger før <output id="before-out"></output></span>
-          <input type="range" id="before" min="1" max="90" step="1">
+          <span class="control-label">Glatting <output id="smooth-out"></output></span>
+          <input type="range" id="smooth" min="0" max="100" step="1">
         </label>
-        <label class="control">
-          <span class="control-label">Målinger etter <output id="after-out"></output></span>
-          <input type="range" id="after" min="0" max="90" step="1">
-        </label>
-        <p class="panel-sub control-help">Trenden i hvert punkt er en rett linje tilpasset målingene rundt det: så mange før og etter. Flere målinger gir en glattere trend. Med 0 etter bruker trenden bare det som var kjent den dagen.</p>
+        <p class="panel-sub control-help">Trenden er en gaussisk glatting: hver veiing teller med en vekt som faller som en klokkekurve med avstanden i tid, og σ er bredden på klokka. Mot høyre blir trenden glattere. Ved siste veiing finnes bare målinger bakover, så der svinger trenden mest.</p>
       </section>
 
-      <section class="panel" aria-labelledby="weight-title">
-        <div class="panel-head">
-          <h2 id="weight-title">Vekt og trend</h2>
-          <p class="panel-sub" id="period-sub"></p>
-        </div>
-        <div class="chart" id="chart-weight"></div>
-      </section>
+      <!-- Vektgrafen i stående format til venstre, vektendring og ukedager ved siden av.
+           På smal skjerm under hverandre. -->
+      <div class="vekt-layout">
+        <section class="panel" aria-labelledby="weight-title">
+          <div class="panel-head">
+            <h2 id="weight-title">Vekt og trend</h2>
+            <p class="panel-sub" id="period-sub"></p>
+          </div>
+          <div class="chart" id="chart-weight"></div>
+        </section>
 
-      <div class="grid-2">
+        <div class="vekt-side">
         <section class="panel" aria-labelledby="deriv-title">
           <div class="panel-head">
             <h2 id="deriv-title">Vektendring</h2>
-            <p class="panel-sub">Trendens stigning, i gram per dag. Under null = ned i vekt.</p>
+            <p class="panel-sub">Trendens stigning, i gram per uke. Under null = ned i vekt.</p>
           </div>
           <div class="chart" id="chart-deriv"></div>
         </section>
@@ -103,6 +102,7 @@
           </div>
           <div class="chart" id="chart-weekday"></div>
         </section>
+        </div>
       </div>
 
       <section class="panel" id="fat-panel" aria-labelledby="fat-title" hidden>
@@ -139,8 +139,10 @@
     </div>
   </main>
 
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+
   <script src="https://accounts.google.com/gsi/client" async></script>
-  <script src="/js/theme.js"></script>
-  <script type="module" src="js/vekt.js?v=ef24591"></script>
+  <script src="/js/theme.js?v=26101be"></script>
+  <script type="module" src="js/vekt.js?v=26101be"></script>
 </body>
 </html>

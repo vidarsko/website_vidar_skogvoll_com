@@ -7,6 +7,9 @@
 // «Lest»: Vidar merker en sak som lest, og den lagres i avislest/<dato>_<sak-id>. Saken blir
 // stående (dempet) til siden lastes på nytt, så ingenting hopper. Ved neste lasting er den borte.
 // Uleste saker fra de siste sju dagene følger med i den nyeste utgaven, under «Fra tidligere dager».
+// «Vis leste» henter fram igjen sakene som var lest da siden ble lastet (i utgaven som vises, og
+// i den nyeste også de siste sju dagene), dempet og med «Lest» trykket inn, så de kan åpnes
+// eller merkes som ulest.
 //
 // Lokal forhåndsvisning uten Firebase: start en server i repoets rot (python -m http.server)
 // og åpne http://localhost:8000/avis/?fil=2026-11-17, som leser tools/avis/2026-11-17.json.
@@ -24,7 +27,9 @@ const KORT = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' }
 const KL = new Intl.DateTimeFormat('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' });
 const DAGER_MED = 7; // så lenge en ulest sak følger med til nye utgaver
 
-let saker = [];             // sakene i visningen, se normaliser()
+let alle = [];              // alle sakene i visningen, også de som var lest, se normaliser()
+let saker = [];             // sakene som vises nå
+let visLeste = false;       // «Vis leste» er trykket inn
 let seksjon = 'alle';
 let lagre = null;           // (sak, lest) => Promise; null i lokal forhåndsvisning
 let lestFor = new Set();    // lest da siden ble lastet: vises ikke
@@ -74,10 +79,11 @@ function normaliser(utgave, eldre) {
 // ---------- Tegning ----------
 
 function render(data, eldre = []) {
-  lestNa = new Set();
   seksjon = 'alle';
-  saker = [...normaliser(data, false), ...eldre.flatMap((u) => normaliser(u, true))]
-    .filter((s) => !lestFor.has(s.nokkel));
+  visLeste = false;
+  alle = [...normaliser(data, false), ...eldre.flatMap((u) => normaliser(u, true))];
+  lestNa = new Set(alle.filter((s) => lestFor.has(s.nokkel)).map((s) => s.nokkel));
+  velgSaker();
   $('dag-tittel').textContent = stor(DAG.format(somDato(data.dato)));
   $('ingress').textContent = data.ingress || '';
   $('updated').textContent = data.laget ? 'Laget kl. ' + KL.format(new Date(data.laget)) : '';
@@ -85,6 +91,20 @@ function render(data, eldre = []) {
   tegnSaker();
   $('notice').hidden = true;
   $('avis').hidden = false;
+}
+
+// Det som var lest da siden ble lastet, er skjult, med mindre «Vis leste» er trykket inn.
+// En sak som merkes ulest mens de vises, blir stående når de skjules igjen.
+function velgSaker() {
+  saker = alle.filter((s) => visLeste || !(lestFor.has(s.nokkel) && lestNa.has(s.nokkel)));
+}
+
+function tegnLesteKnapp() {
+  const n = alle.filter((s) => lestFor.has(s.nokkel) && lestNa.has(s.nokkel)).length;
+  const b = $('vis-leste');
+  b.hidden = !n && !visLeste;
+  b.setAttribute('aria-pressed', String(visLeste));
+  b.textContent = visLeste ? 'Skjul leste' : `Vis leste (${n})`;
 }
 
 function tegnFilter() {
@@ -167,6 +187,7 @@ function tegnSaker() {
   eb.replaceChildren();
   for (const s of gamle) eb.append(kort(s, false));
   $('eldre-blokk').hidden = !gamle.length;
+  tegnLesteKnapp();
 }
 
 // ---------- Lest ----------
@@ -179,6 +200,7 @@ function sett(nokkel, lest) {
   for (const b of document.querySelectorAll('.lest-btn')) {
     if (b.dataset.lest === nokkel) b.setAttribute('aria-pressed', String(lest));
   }
+  tegnLesteKnapp();
 }
 
 async function vend(sak) {
@@ -227,6 +249,12 @@ function apneSak(sak) {
   $('d-bunn').append(b);
 }
 $('lukk').addEventListener('click', () => $('dialog').close());
+$('vis-leste').addEventListener('click', () => {
+  visLeste = !visLeste;
+  velgSaker();
+  tegnFilter();
+  tegnSaker();
+});
 $('dialog').addEventListener('click', (e) => { if (e.target === $('dialog')) $('dialog').close(); });
 
 // ---------- Henting ----------

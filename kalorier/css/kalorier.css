@@ -88,6 +88,9 @@ main, #content { grid-template-columns: minmax(0, 1fr); }
 .e-kcal { font-weight: 700; font-variant-numeric: tabular-nums; }
 .e-kcal.neg { color: var(--g-trening); }
 
+/* Uka, med piler til uka før og etter */
+.week-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.week-head { flex: 1; min-width: 0; text-align: center; margin-bottom: 0; }
 /* Uka */
 .week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .wd {

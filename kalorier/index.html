@@ -8,7 +8,7 @@
   <title>Kalorier</title>
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="css/kalorier.css?v=ef24591">
+  <link rel="stylesheet" href="css/kalorier.css?v=26101be">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -83,9 +83,17 @@
       </section>
 
       <section class="panel" aria-labelledby="week-title">
-        <div class="panel-head">
-          <h2 id="week-title">Uka</h2>
-          <p class="panel-sub" id="week-sub"></p>
+        <div class="week-nav">
+          <button class="nav-btn" type="button" id="prev-week" aria-label="Forrige uke" title="Forrige uke">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <div class="panel-head week-head">
+            <h2 id="week-title">Uka</h2>
+            <p class="panel-sub" id="week-sub"></p>
+          </div>
+          <button class="nav-btn" type="button" id="next-week" aria-label="Neste uke" title="Neste uke">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
         </div>
         <div class="week-days" id="week-days"></div>
       </section>
@@ -142,6 +150,6 @@
   </div>
 
   <script src="/js/theme.js"></script>
-  <script type="module" src="js/kalorier.js?v=ef24591"></script>
+  <script type="module" src="js/kalorier.js?v=26101be"></script>
 </body>
 </html>

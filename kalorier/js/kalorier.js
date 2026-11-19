@@ -234,6 +234,7 @@ function renderWeek() {
   const mon = mondayOf(day);
   $('week-title').textContent = 'Uke ' + isoWeek(mon);
   $('week-sub').textContent = `${shortDate.format(mon)} – ${shortDate.format(addDays(mon, 6))} · mål ${fmt0(weekBudget())} kcal`;
+  $('next-week').disabled = mon >= mondayOf(new Date());
   const wrap = $('week-days');
   wrap.replaceChildren();
   const now = startOfDay(new Date());
@@ -470,6 +471,12 @@ mountAuthBar($('auth'));
 $('prev').addEventListener('click', () => goTo(addDays(day, -1)));
 $('next').addEventListener('click', () => goTo(addDays(day, 1)));
 $('today').addEventListener('click', () => goTo(new Date()));
+// Uke for uke: samme ukedag uka før eller etter, men aldri forbi i dag.
+$('prev-week').addEventListener('click', () => goTo(addDays(day, -7)));
+$('next-week').addEventListener('click', () => {
+  const d = addDays(day, 7);
+  goTo(d > new Date() ? new Date() : d);
+});
 $('more-weeks').addEventListener('click', async () => {
   await ensureFrom(addDays(loadedFrom, -7 * WEEKS_STEP));
   render();

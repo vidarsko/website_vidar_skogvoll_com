@@ -5,12 +5,30 @@
 #content[hidden], #fat-panel[hidden], #mass-panels[hidden] { display: none; }
 
 /* Kontroller */
-.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 24px; align-items: end; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px 32px; align-items: end; }
+.controls .control { flex: 1 1 260px; }
+.controls .control:first-child { flex: 0 1 auto; }
 .control { display: grid; gap: 8px; }
 .control-label { font-size: 14px; color: var(--text-muted); }
 .control-label output { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 4px; }
 .control input[type="range"] { width: 100%; accent-color: var(--accent); }
 .control-help { grid-column: 1 / -1; }
+
+/* Vektgrafen stående til venstre, de to andre ved siden av */
+.vekt-layout, .vekt-side { display: grid; gap: 16px; align-content: start; }
+@media (min-width: 900px) {
+  .vekt-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+}
+
+/* Hover: strek, ring og boks */
+.chart .hover-hit { fill: transparent; touch-action: pan-y; cursor: crosshair; }
+.chart .hover-line { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.chart .hover-dot { fill: var(--surface); stroke: var(--text); stroke-width: 2; pointer-events: none; }
+.tooltip[hidden] { display: none; }
+.tooltip .tt-row span { flex: 1; }
+.tooltip .tt-trend { background: var(--s-aiskilltrees); }
+.tooltip .tt-deriv { background: var(--s-laeremedki); }
+.tooltip .tt-dot { background: var(--s-aiskilltrees); opacity: 0.35; border-radius: 50%; }
 
 /* Grafer */
 .chart .weight-dot { fill: var(--s-aiskilltrees); opacity: 0.35; }

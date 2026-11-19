@@ -10,8 +10,8 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css?v=ef24591">
-  <link rel="stylesheet" href="css/avis.css?v=ef24591">
+  <link rel="stylesheet" href="/css/style.css?v=26101be">
+  <link rel="stylesheet" href="css/avis.css?v=26101be">
 </head>
 <body>
   <a class="skip-link" href="#main">Hopp til innholdet</a>
@@ -56,6 +56,9 @@
         <h2 id="eldre-tittel">Fra tidligere dager</h2>
         <div class="saker" id="eldre"></div>
       </section>
+
+      <!-- Saker som var lest da siden ble lastet: skjult, men kan hentes fram igjen. -->
+      <div class="leste-rad"><button class="btn" type="button" id="vis-leste" aria-pressed="false" hidden>Vis leste</button></div>
     </div>
   </main>
 
@@ -82,7 +85,7 @@
     </div>
   </dialog>
 
-  <script src="/js/theme.js?v=ef24591"></script>
-  <script type="module" src="js/avis.js?v=ef24591"></script>
+  <script src="/js/theme.js?v=26101be"></script>
+  <script type="module" src="js/avis.js?v=26101be"></script>
 </body>
 </html>
