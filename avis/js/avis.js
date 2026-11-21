@@ -4,16 +4,19 @@
 // jobben i vaulten lager. Ingenting om Vidar står her: seksjoner, saker og begrunnelser kommer
 // fra utgaven selv. firestore.rules er det som stenger andre ute.
 //
-// «Lest»: Vidar merker en sak som lest, og den lagres i avislest/<dato>_<sak-id>. Saken blir
-// stående (dempet) til siden lastes på nytt, så ingenting hopper. Ved neste lasting er den borte.
-// Uleste saker fra de siste sju dagene følger med i den nyeste utgaven, under «Fra tidligere dager».
-// «Vis leste» henter fram igjen sakene som var lest da siden ble lastet (i utgaven som vises, og
-// i den nyeste også de siste sju dagene), dempet og med «Lest» trykket inn, så de kan åpnes
-// eller merkes som ulest.
+// Tommel opp / tommel ned: Vidar vurderer en sak, og vurderingen lagres i
+// avislest/<dato>_<sak-id> (feltet vurdering: 1 eller -1). Samlingen het «lest» før tomlene kom
+// og beholder navnet, så Firestore-reglene er de samme; eldre merker uten vurdering er bare «lest».
+// Nattjobben eksporterer vurderingene og bruker dem til å justere hva avisa skriver om.
+// En vurdert sak blir stående (dempet) til siden lastes på nytt, så ingenting hopper. Ved neste
+// lasting er den borte. Uvurderte saker fra de siste sju dagene følger med i den nyeste utgaven,
+// under «Fra tidligere dager». «Vis vurderte» henter fram igjen sakene som var vurdert da siden
+// ble lastet, dempet og med tommelen trykket inn, så de kan åpnes eller vurderes på nytt.
+// Et trykk på tommelen som alt er trykket inn, angrer vurderingen.
 //
 // Lokal forhåndsvisning uten Firebase: start en server i repoets rot (python -m http.server)
 // og åpne http://localhost:8000/avis/?fil=2026-11-17, som leser tools/avis/2026-11-17.json.
-// &eldre=2026-11-16 legger til en eldre utgave. «Lest» huskes da bare til siden lastes på nytt.
+// &eldre=2026-11-16 legger til en eldre utgave. Vurderingene huskes da bare til siden lastes på nytt.
 // Det virker bare på localhost, og tools/ publiseres ikke.
 
 import {
@@ -25,15 +28,15 @@ const $ = (id) => document.getElementById(id);
 const DAG = new Intl.DateTimeFormat('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' });
 const KORT = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
 const KL = new Intl.DateTimeFormat('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' });
-const DAGER_MED = 7; // så lenge en ulest sak følger med til nye utgaver
+const DAGER_MED = 7; // så lenge en uvurdert sak følger med til nye utgaver
 
-let alle = [];              // alle sakene i visningen, også de som var lest, se normaliser()
+let alle = [];              // alle sakene i visningen, også de som var vurdert, se normaliser()
 let saker = [];             // sakene som vises nå
-let visLeste = false;       // «Vis leste» er trykket inn
+let visLeste = false;       // «Vis vurderte» er trykket inn
 let seksjon = 'alle';
-let lagre = null;           // (sak, lest) => Promise; null i lokal forhåndsvisning
-let lestFor = new Set();    // lest da siden ble lastet: vises ikke
-let lestNa = new Set();     // merket i denne visningen: vises, men dempet
+let lagre = null;           // (sak, verdi) => Promise, verdi 1, -1 eller null; null i lokal forhåndsvisning
+let vurdFor = new Map();    // nøkkel → 1, -1 eller 0 (gammelt «lest») da siden ble lastet: vises ikke
+let vurdNa = new Map();     // vurderingene nå, også de som er gjort i denne visningen (vises dempet)
 let apen = null;            // saken som er åpen i dialogen
 
 // ---------- Hjelpere ----------
@@ -82,7 +85,7 @@ function render(data, eldre = []) {
   seksjon = 'alle';
   visLeste = false;
   alle = [...normaliser(data, false), ...eldre.flatMap((u) => normaliser(u, true))];
-  lestNa = new Set(alle.filter((s) => lestFor.has(s.nokkel)).map((s) => s.nokkel));
+  vurdNa = new Map(alle.filter((s) => vurdFor.has(s.nokkel)).map((s) => [s.nokkel, vurdFor.get(s.nokkel)]));
   velgSaker();
   $('dag-tittel').textContent = stor(DAG.format(somDato(data.dato)));
   $('ingress').textContent = data.ingress || '';
@@ -93,18 +96,19 @@ function render(data, eldre = []) {
   $('avis').hidden = false;
 }
 
-// Det som var lest da siden ble lastet, er skjult, med mindre «Vis leste» er trykket inn.
-// En sak som merkes ulest mens de vises, blir stående når de skjules igjen.
+// Det som var vurdert da siden ble lastet, er skjult, med mindre «Vis vurderte» er trykket inn.
+// En sak som får vurderingen angret mens de vises, blir stående når de skjules igjen.
+const skjult = (s) => vurdFor.has(s.nokkel) && vurdNa.has(s.nokkel);
 function velgSaker() {
-  saker = alle.filter((s) => visLeste || !(lestFor.has(s.nokkel) && lestNa.has(s.nokkel)));
+  saker = alle.filter((s) => visLeste || !skjult(s));
 }
 
 function tegnLesteKnapp() {
-  const n = alle.filter((s) => lestFor.has(s.nokkel) && lestNa.has(s.nokkel)).length;
+  const n = alle.filter(skjult).length;
   const b = $('vis-leste');
   b.hidden = !n && !visLeste;
   b.setAttribute('aria-pressed', String(visLeste));
-  b.textContent = visLeste ? 'Skjul leste' : `Vis leste (${n})`;
+  b.textContent = visLeste ? 'Skjul vurderte' : `Vis vurderte (${n})`;
 }
 
 function tegnFilter() {
@@ -143,19 +147,39 @@ function meta(sak, medSeksjon) {
   return p;
 }
 
-const SIRKEL = '<svg class="ikon-ulest" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
-const SJEKK = '<svg class="ikon-lest" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>';
+// Tommelen peker opp; tommel ned er samme tegning snudd i CSS-en.
+const TOMMEL = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3z"/><path d="M7 10l4-7a2.5 2.5 0 0 1 3 2.6L13.5 9H19a2 2 0 0 1 2 2.3l-1.3 8A2 2 0 0 1 17.7 21H7"/></svg>';
+const TOMLER = [
+  { verdi: 1, cls: 'opp', tekst: 'Mer av dette', title: 'Tommel opp: mer av dette. Saken er borte neste gang avisa lastes.' },
+  { verdi: -1, cls: 'ned', tekst: 'Mindre av dette', title: 'Tommel ned: mindre av dette. Saken er borte neste gang avisa lastes.' },
+];
 
-function lestKnapp(cls) {
-  const b = el('button', 'btn lest-btn ' + (cls || ''));
-  b.type = 'button';
-  b.innerHTML = SIRKEL + SJEKK + '<span>Lest</span>';
-  b.title = 'Merk som lest. Saken er borte neste gang avisa lastes.';
-  return b;
+// To knapper i en gruppe. data-nokkel sier hvilken sak de gjelder, så sett() finner dem alle.
+function tommelKnapper(sak, stor) {
+  const g = el('div', 'tomler');
+  g.setAttribute('role', 'group');
+  g.setAttribute('aria-label', 'Vurder saken');
+  for (const t of TOMLER) {
+    const b = el('button', 'btn tommel ' + t.cls + (stor ? ' stor' : ''));
+    b.type = 'button';
+    b.dataset.nokkel = sak ? sak.nokkel : '';
+    b.dataset.verdi = String(t.verdi);
+    b.title = t.title;
+    b.setAttribute('aria-label', t.tekst);
+    b.setAttribute('aria-pressed', String(!!sak && vurdNa.get(sak.nokkel) === t.verdi));
+    b.innerHTML = TOMMEL + (stor ? '<span>' + t.tekst + '</span>' : '');
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const s = sak || apen;
+      if (s) vurder(s, t.verdi);
+    });
+    g.append(b);
+  }
+  return g;
 }
 
 function kort(sak, hoved) {
-  const a = el('article', 'sak' + (hoved ? ' hoved' : '') + (lestNa.has(sak.nokkel) ? ' er-lest' : ''));
+  const a = el('article', 'sak' + (hoved ? ' hoved' : '') + (vurdNa.has(sak.nokkel) ? ' er-lest' : ''));
   a.dataset.nokkel = sak.nokkel;
   const h = el('h2', 'sak-tittel');
   const apne = el('button', 'sak-apne', sak.tittel);
@@ -163,11 +187,7 @@ function kort(sak, hoved) {
   apne.addEventListener('click', () => apneSak(sak));
   h.append(apne);
   const bunn = el('div', 'sak-bunn');
-  const lest = lestKnapp();
-  lest.dataset.lest = sak.nokkel;
-  lest.setAttribute('aria-pressed', String(lestNa.has(sak.nokkel)));
-  lest.addEventListener('click', () => vend(sak));
-  bunn.append(lest);
+  bunn.append(tommelKnapper(sak, false));
   a.append(meta(sak, seksjon === 'alle'), h, el('p', 'sak-tekst', sak.sammendrag), bunn);
   return a;
 }
@@ -181,7 +201,7 @@ function tegnSaker() {
   const box = $('saker');
   box.replaceChildren();
   for (const s of hoved ? [hoved, ...nye.filter((x) => x !== hoved)] : nye) box.append(kort(s, s === hoved));
-  if (!nye.length) box.append(el('p', 'tom', saker.length ? 'Ingen nye saker her i dag.' : 'Alt er lest.'));
+  if (!nye.length) box.append(el('p', 'tom', saker.length ? 'Ingen nye saker her i dag.' : 'Alt er vurdert.'));
 
   const eb = $('eldre');
   eb.replaceChildren();
@@ -190,28 +210,31 @@ function tegnSaker() {
   tegnLesteKnapp();
 }
 
-// ---------- Lest ----------
+// ---------- Vurdering ----------
 
-function sett(nokkel, lest) {
-  if (lest) lestNa.add(nokkel); else lestNa.delete(nokkel);
+// verdi: 1, -1, 0 (gammelt «lest») eller null (ikke vurdert).
+function sett(nokkel, verdi) {
+  if (verdi == null) vurdNa.delete(nokkel); else vurdNa.set(nokkel, verdi);
   for (const a of document.querySelectorAll('.sak')) {
-    if (a.dataset.nokkel === nokkel) a.classList.toggle('er-lest', lest);
+    if (a.dataset.nokkel === nokkel) a.classList.toggle('er-lest', verdi != null);
   }
-  for (const b of document.querySelectorAll('.lest-btn')) {
-    if (b.dataset.lest === nokkel) b.setAttribute('aria-pressed', String(lest));
+  for (const b of document.querySelectorAll('.tommel')) {
+    if (b.dataset.nokkel === nokkel) b.setAttribute('aria-pressed', String(Number(b.dataset.verdi) === verdi));
   }
   tegnLesteKnapp();
 }
 
-async function vend(sak) {
-  const lest = !lestNa.has(sak.nokkel);
-  sett(sak.nokkel, lest);
+// Samme tommel en gang til angrer; den andre tommelen bytter.
+async function vurder(sak, verdi) {
+  const for_ = vurdNa.has(sak.nokkel) ? vurdNa.get(sak.nokkel) : null;
+  const ny = for_ === verdi ? null : verdi;
+  sett(sak.nokkel, ny);
   if (!lagre) return;
   try {
-    await lagre(sak, lest);
+    await lagre(sak, ny);
   } catch (err) {
-    sett(sak.nokkel, !lest);
-    say('Klarte ikke å lagre at saken er lest (' + (err && err.code ? err.code : 'ukjent feil') + ').');
+    sett(sak.nokkel, for_);
+    say('Klarte ikke å lagre vurderingen (' + (err && err.code ? err.code : 'ukjent feil') + ').');
   }
 }
 
@@ -237,17 +260,10 @@ function apneSak(sak) {
     if (k.dato) li.append(el('span', 'kilde-dato', KORT.format(somDato(k.dato))));
     ul.append(li);
   }
-  $('d-lest').dataset.lest = sak.nokkel;
-  $('d-lest').setAttribute('aria-pressed', String(lestNa.has(sak.nokkel)));
+  $('d-bunn').replaceChildren(tommelKnapper(sak, true));
   $('dialog').showModal();
 }
 
-{
-  const b = lestKnapp('btn-primary');
-  b.id = 'd-lest';
-  b.addEventListener('click', () => { if (apen) vend(apen); });
-  $('d-bunn').append(b);
-}
 $('lukk').addEventListener('click', () => $('dialog').close());
 $('vis-leste').addEventListener('click', () => {
   visLeste = !visLeste;
@@ -284,9 +300,10 @@ if (lokal) {
 } else {
   const db = getFirestore(app);
   const avis = collection(db, 'avis');
-  lagre = (sak, lest) => (lest
+  lagre = (sak, verdi) => (verdi
     ? setDoc(doc(db, 'avislest', sak.nokkel), {
-      dato: sak.dato, sak: sak.id, tittel: sak.tittel, lest: new Date().toISOString(),
+      dato: sak.dato, sak: sak.id, tittel: sak.tittel, seksjon: sak.sek.id,
+      vurdering: verdi, lest: new Date().toISOString(),
     })
     : deleteDoc(doc(db, 'avislest', sak.nokkel)));
 
@@ -319,13 +336,13 @@ if (lokal) {
         nabo(data.dato, '>'),
         getDocs(query(collection(db, 'avislest'), where('dato', '>=', dagerFor(fra, 1)))),
       ]);
-      // Bare den nyeste utgaven tar med uleste saker fra dagene før.
+      // Bare den nyeste utgaven tar med uvurderte saker fra dagene før.
       let eldre = [];
       if (!neste) {
         const r = await getDocs(query(avis, where('dato', '>=', fra), where('dato', '<', data.dato), orderBy('dato', 'desc')));
         eldre = r.docs.map((d) => JSON.parse(d.data().json));
       }
-      lestFor = new Set(lest.docs.map((d) => d.id));
+      vurdFor = new Map(lest.docs.map((d) => [d.id, d.data().vurdering || 0]));
       render(data, eldre);
       settNav(forrige, neste);
     } catch (err) {
