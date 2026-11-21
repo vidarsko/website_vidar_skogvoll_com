@@ -14,6 +14,10 @@
 // ble lastet, dempet og med tommelen trykket inn, så de kan åpnes eller vurderes på nytt.
 // Et trykk på tommelen som alt er trykket inn, angrer vurderingen.
 //
+// Dagens stilling: utgaven kan ha én utlyst stilling i Stockholm (feltet stilling), vist i et eget
+// kort under sakene med de samme tomlene. Den lagres i avislest som en sak med seksjon «stilling»,
+// og følger ikke med til nye utgaver: hver utgave har sin egen.
+//
 // Lokal forhåndsvisning uten Firebase: start en server i repoets rot (python -m http.server)
 // og åpne http://localhost:8000/avis/?fil=2026-11-17, som leser tools/avis/2026-11-17.json.
 // &eldre=2026-11-16 legger til en eldre utgave. Vurderingene huskes da bare til siden lastes på nytt.
@@ -67,8 +71,13 @@ function say(text, withLogin) {
   n.hidden = false;
 }
 
-// Hver sak får dato, nøkkel og seksjonen fra sin egen utgave.
+// Hver sak får dato, nøkkel og seksjonen fra sin egen utgave. Dagens stilling kommer bare fra
+// utgaven som vises, ikke fra de eldre.
+const STILLING = { id: 'stilling', navn: 'Dagens stilling', farge: 0 };
 function normaliser(utgave, eldre) {
+  const st = !eldre && utgave.stilling
+    ? [{ ...utgave.stilling, dato: utgave.dato, nokkel: utgave.dato + '_' + utgave.stilling.id, eldre, stilling: true, sek: STILLING }]
+    : [];
   return utgave.saker.map((s) => {
     const i = utgave.seksjoner.findIndex((x) => x.id === s.seksjon);
     const sx = utgave.seksjoner[i] || { id: s.seksjon, navn: s.seksjon };
@@ -76,7 +85,7 @@ function normaliser(utgave, eldre) {
       ...s, dato: utgave.dato, nokkel: utgave.dato + '_' + s.id, eldre,
       sek: { id: sx.id, navn: sx.navn, farge: sx.farge || (Math.max(i, 0) % 6) + 1 },
     };
-  });
+  }).concat(st);
 }
 
 // ---------- Tegning ----------
@@ -115,7 +124,7 @@ function tegnFilter() {
   const f = $('filter');
   f.replaceChildren();
   const valg = [{ id: 'alle', navn: 'Alle' }];
-  for (const s of saker) if (!valg.some((v) => v.id === s.sek.id)) valg.push(s.sek);
+  for (const s of saker) if (!s.stilling && !valg.some((v) => v.id === s.sek.id)) valg.push(s.sek);
   f.hidden = valg.length <= 2; // én seksjon: ingenting å velge mellom
   for (const v of valg) {
     const b = el('button');
@@ -137,6 +146,7 @@ function tegnFilter() {
 }
 
 function meta(sak, medSeksjon) {
+  if (sak.stilling) return stillingMeta(sak);
   const p = el('p', 'sak-meta sek-' + sak.sek.farge);
   if (medSeksjon) p.append(el('span', 'swatch'), el('span', 'sak-seksjon', sak.sek.navn));
   const k = sak.kilder[0];
@@ -147,11 +157,23 @@ function meta(sak, medSeksjon) {
   return p;
 }
 
+// Stillingen: arbeidsgiver, sted og søknadsfrist i stedet for seksjon og kilde.
+function stillingMeta(st) {
+  const p = el('p', 'sak-meta stilling-meta');
+  p.append(el('span', 'sak-seksjon', st.arbeidsgiver), el('span', null, st.sted));
+  if (st.frist) p.append(el('span', null, 'Frist ' + KORT.format(somDato(st.frist))));
+  return p;
+}
+
 // Tommelen peker opp; tommel ned er samme tegning snudd i CSS-en.
 const TOMMEL = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3z"/><path d="M7 10l4-7a2.5 2.5 0 0 1 3 2.6L13.5 9H19a2 2 0 0 1 2 2.3l-1.3 8A2 2 0 0 1 17.7 21H7"/></svg>';
 const TOMLER = [
   { verdi: 1, cls: 'opp', tekst: 'Mer av dette', title: 'Tommel opp: mer av dette. Saken er borte neste gang avisa lastes.' },
   { verdi: -1, cls: 'ned', tekst: 'Mindre av dette', title: 'Tommel ned: mindre av dette. Saken er borte neste gang avisa lastes.' },
+];
+const TOMLER_STILLING = [
+  { verdi: 1, cls: 'opp', tekst: 'Bra forslag', title: 'Tommel opp: et bra forslag, flere som denne.' },
+  { verdi: -1, cls: 'ned', tekst: 'Dårlig forslag', title: 'Tommel ned: ikke noe for meg, færre som denne.' },
 ];
 
 // To knapper i en gruppe. data-nokkel sier hvilken sak de gjelder, så sett() finner dem alle.
@@ -159,7 +181,7 @@ function tommelKnapper(sak, stor) {
   const g = el('div', 'tomler');
   g.setAttribute('role', 'group');
   g.setAttribute('aria-label', 'Vurder saken');
-  for (const t of TOMLER) {
+  for (const t of (sak || apen) && (sak || apen).stilling ? TOMLER_STILLING : TOMLER) {
     const b = el('button', 'btn tommel ' + t.cls + (stor ? ' stor' : ''));
     b.type = 'button';
     b.dataset.nokkel = sak ? sak.nokkel : '';
@@ -179,7 +201,7 @@ function tommelKnapper(sak, stor) {
 }
 
 function kort(sak, hoved) {
-  const a = el('article', 'sak' + (hoved ? ' hoved' : '') + (vurdNa.has(sak.nokkel) ? ' er-lest' : ''));
+  const a = el('article', 'sak' + (hoved ? ' hoved' : '') + (sak.stilling ? ' stilling' : '') + (vurdNa.has(sak.nokkel) ? ' er-lest' : ''));
   a.dataset.nokkel = sak.nokkel;
   const h = el('h2', 'sak-tittel');
   const apne = el('button', 'sak-apne', sak.tittel);
@@ -193,7 +215,8 @@ function kort(sak, hoved) {
 }
 
 function tegnSaker() {
-  const synlig = saker.filter((s) => seksjon === 'alle' || s.sek.id === seksjon);
+  const st = seksjon === 'alle' ? saker.find((s) => s.stilling) : null;
+  const synlig = saker.filter((s) => !s.stilling && (seksjon === 'alle' || s.sek.id === seksjon));
   const nye = synlig.filter((s) => !s.eldre);
   const gamle = synlig.filter((s) => s.eldre);
   const hoved = nye.find((s) => s.viktig);
@@ -201,7 +224,10 @@ function tegnSaker() {
   const box = $('saker');
   box.replaceChildren();
   for (const s of hoved ? [hoved, ...nye.filter((x) => x !== hoved)] : nye) box.append(kort(s, s === hoved));
-  if (!nye.length) box.append(el('p', 'tom', saker.length ? 'Ingen nye saker her i dag.' : 'Alt er vurdert.'));
+  if (!nye.length) box.append(el('p', 'tom', saker.some((s) => !s.stilling) ? 'Ingen nye saker her i dag.' : 'Alt er vurdert.'));
+
+  $('stilling').replaceChildren(...(st ? [kort(st, false)] : []));
+  $('stilling-blokk').hidden = !st;
 
   const eb = $('eldre');
   eb.replaceChildren();
@@ -248,6 +274,8 @@ function apneSak(sak) {
   t.replaceChildren(el('p', null, sak.sammendrag));
   for (const avsnitt of (sak.mer || '').split(/\n\s*\n/).filter(Boolean)) t.append(el('p', null, avsnitt));
   $('d-hvorfor').textContent = sak.hvorfor;
+  $('d-hvorfor-tittel').textContent = sak.stilling ? 'Hvorfor denne stillingen' : 'Hvorfor du får denne';
+  $('d-kilder-tittel').textContent = sak.stilling ? 'Utlysningen' : 'Kilder';
   const ul = $('d-kilder');
   ul.replaceChildren();
   for (const k of sak.kilder) {
