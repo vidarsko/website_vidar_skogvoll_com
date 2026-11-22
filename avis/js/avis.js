@@ -14,8 +14,8 @@
 // ble lastet, dempet og med tommelen trykket inn, så de kan åpnes eller vurderes på nytt.
 // Et trykk på tommelen som alt er trykket inn, angrer vurderingen.
 //
-// Tilbakemelding med ord: hver sak har et valgfritt tekstfelt i dialogen (knappen med snakkeboblen
-// på kortet åpner den), og hele utgaven har ett nederst. Teksten lagres i samme dokument som
+// Tilbakemelding med ord: knappen «Tilbakemelding» på hvert kort, i dialogen med hele saken og
+// nederst i utgaven åpner en popup med et tekstfelt. Teksten lagres i samme dokument som
 // tommelen (feltet kommentar); utgavens i avislest/<dato>__utgave. En kommentar alene skjuler ikke
 // saken: bare en tommel gjør det. Nattjobben leser tomler og kommentarer som små hint, se skillen.
 //
@@ -103,8 +103,8 @@ function render(data, eldre = []) {
   alle = [...normaliser(data, false), ...eldre.flatMap((u) => normaliser(u, true))];
   vurdNa = new Map(alle.filter((s) => vurdFor.has(s.nokkel)).map((s) => [s.nokkel, vurdFor.get(s.nokkel)]));
   utgaveDato = data.dato;
-  $('u-kommentar').value = komm.get(data.dato + '__utgave') || '';
-  $('u-status').textContent = '';
+  $('u-tb').dataset.nokkel = data.dato + '__utgave';
+  $('u-tb').setAttribute('aria-pressed', String(!!komm.get(data.dato + '__utgave')));
   velgSaker();
   $('dag-tittel').textContent = stor(DAG.format(somDato(data.dato)));
   $('ingress').textContent = data.ingress || '';
@@ -186,7 +186,6 @@ const TOMLER_STILLING = [
   { verdi: -1, cls: 'ned', tekst: 'Dårlig forslag', title: 'Tommel ned: ikke noe for meg, færre som denne.' },
 ];
 
-const BOBLE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/></svg>';
 
 // To knapper i en gruppe. data-nokkel sier hvilken sak de gjelder, så sett() finner dem alle.
 function tommelKnapper(sak, stor) {
@@ -221,15 +220,7 @@ function kort(sak, hoved) {
   apne.addEventListener('click', () => apneSak(sak));
   h.append(apne);
   const bunn = el('div', 'sak-bunn');
-  const kb = el('button', 'btn kommenter');
-  kb.type = 'button';
-  kb.dataset.nokkel = sak.nokkel;
-  kb.title = 'Skriv en tilbakemelding på saken';
-  kb.setAttribute('aria-label', 'Skriv en tilbakemelding');
-  kb.setAttribute('aria-pressed', String(!!komm.get(sak.nokkel)));
-  kb.innerHTML = BOBLE;
-  kb.addEventListener('click', (e) => { e.stopPropagation(); apneSak(sak, true); });
-  bunn.append(kb, tommelKnapper(sak, false));
+  bunn.append(tbKnapp(sak), tommelKnapper(sak, false));
   a.append(meta(sak, seksjon === 'alle'), h, el('p', 'sak-tekst', sak.sammendrag), bunn);
   return a;
 }
@@ -286,35 +277,59 @@ async function vurder(sak, verdi) {
 
 // ---------- Tilbakemelding med ord ----------
 
-async function lagreKommentar(sak, tekst, status) {
+// Knappen «Tilbakemelding». aria-pressed viser at det finnes en lagret tilbakemelding.
+function tbKnapp(sak) {
+  const b = el('button', 'btn tb-knapp', 'Tilbakemelding');
+  b.type = 'button';
+  b.dataset.nokkel = sak.nokkel;
+  b.title = 'Skriv hva du synes om saken';
+  b.setAttribute('aria-pressed', String(!!komm.get(sak.nokkel)));
+  b.addEventListener('click', (e) => { e.stopPropagation(); apneTb(sak); });
+  return b;
+}
+
+let tbSak = null; // saken popupen gjelder
+function apneTb(sak) {
+  tbSak = sak;
+  $('tb-om').textContent = sak.id === '__utgave' ? 'Om hele avisa ' + DAG.format(somDato(sak.dato)) + '.' : sak.tittel;
+  $('tb-tekst').value = komm.get(sak.nokkel) || '';
+  $('tb-status').textContent = '';
+  $('tb').showModal();
+  $('tb-tekst').focus();
+}
+
+async function lagreKommentar() {
+  const sak = tbSak;
+  if (!sak) return;
   const for_ = komm.get(sak.nokkel) || '';
-  tekst = tekst.trim();
-  if (tekst === for_) { status.textContent = 'Lagret'; return; }
+  const tekst = $('tb-tekst').value.trim();
+  if (tekst === for_) { $('tb').close(); return; }
   if (tekst) komm.set(sak.nokkel, tekst); else komm.delete(sak.nokkel);
-  status.textContent = 'Lagrer …';
+  $('tb-status').textContent = 'Lagrer …';
   try {
     if (lagre) await lagre(sak);
-    status.textContent = tekst ? 'Lagret' : 'Slettet';
-    for (const b of document.querySelectorAll('.kommenter')) {
+    for (const b of document.querySelectorAll('.tb-knapp')) {
       if (b.dataset.nokkel === sak.nokkel) b.setAttribute('aria-pressed', String(!!tekst));
     }
+    $('tb').close();
   } catch (err) {
     if (for_) komm.set(sak.nokkel, for_); else komm.delete(sak.nokkel);
-    status.textContent = 'Klarte ikke å lagre (' + (err && err.code ? err.code : 'ukjent feil') + ')';
+    $('tb-status').textContent = 'Klarte ikke å lagre (' + (err && err.code ? err.code : 'ukjent feil') + ')';
   }
 }
 
 // Hele utgaven lagres som en «sak» med id __utgave.
 const utgaveSak = () => ({ id: '__utgave', dato: utgaveDato, nokkel: utgaveDato + '__utgave', tittel: 'Hele utgaven', sek: { id: 'utgave' } });
-$('u-lagre').addEventListener('click', () => lagreKommentar(utgaveSak(), $('u-kommentar').value, $('u-status')));
-$('d-lagre').addEventListener('click', () => { if (apen) lagreKommentar(apen, $('d-kommentar').value, $('d-status')); });
-for (const [felt, status] of [['u-kommentar', 'u-status'], ['d-kommentar', 'd-status']]) {
-  $(felt).addEventListener('input', () => { $(status).textContent = ''; });
-}
+$('u-tb').addEventListener('click', () => apneTb(utgaveSak()));
+$('tb-lagre').addEventListener('click', lagreKommentar);
+$('tb-avbryt').addEventListener('click', () => $('tb').close());
+$('tb-lukk').addEventListener('click', () => $('tb').close());
+$('tb').addEventListener('click', (e) => { if (e.target === $('tb')) $('tb').close(); });
+$('tb-tekst').addEventListener('input', () => { $('tb-status').textContent = ''; });
 
 // ---------- Dialogen med hele saken ----------
 
-function apneSak(sak, skriv) {
+function apneSak(sak) {
   apen = sak;
   $('d-meta').replaceWith(Object.assign(meta(sak, true), { id: 'd-meta' }));
   $('d-tittel').textContent = sak.tittel;
@@ -336,11 +351,8 @@ function apneSak(sak, skriv) {
     if (k.dato) li.append(el('span', 'kilde-dato', KORT.format(somDato(k.dato))));
     ul.append(li);
   }
-  $('d-bunn').replaceChildren(tommelKnapper(sak, true));
-  $('d-kommentar').value = komm.get(sak.nokkel) || '';
-  $('d-status').textContent = '';
+  $('d-bunn').replaceChildren(tbKnapp(sak), tommelKnapper(sak, true));
   $('dialog').showModal();
-  if (skriv) $('d-kommentar').focus();
 }
 
 $('lukk').addEventListener('click', () => $('dialog').close());

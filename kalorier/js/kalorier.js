@@ -156,26 +156,30 @@ async function loadTanke() {
   });
 }
 
-// Tilbakemelding på lappen: skjult bak en knapp, så lappen er ren. Tom tekst sletter den.
+// Tilbakemelding på lappen: knappen «Tilbakemelding» åpner popupen #tb. Tom tekst sletter.
+// aria-pressed på knappen viser at det finnes en lagret tilbakemelding.
 async function tankeSvar(lapp) {
   const ref = doc(db, 'tilbakemelding', 'motivasjon_' + lapp.dato);
   const felt = $('tanke-kommentar');
   const status = $('tanke-svar-status');
   const knapp = $('tanke-svar-knapp');
   let lagret = '';
-  const vis = (apen) => {
-    $('tanke-svar-felt').hidden = !apen;
-    knapp.setAttribute('aria-expanded', String(apen));
-    knapp.textContent = lagret ? 'Din tilbakemelding' : 'Gi tilbakemelding';
-  };
+  const merk = () => knapp.setAttribute('aria-pressed', String(!!lagret));
   knapp.addEventListener('click', () => {
-    vis($('tanke-svar-felt').hidden);
-    if (!$('tanke-svar-felt').hidden) felt.focus();
+    $('tb-om').textContent = lapp.tittel;
+    felt.value = lagret;
+    status.textContent = '';
+    $('tb').showModal();
+    felt.focus();
   });
+  const lukk = () => $('tb').close();
+  $('tb-lukk').addEventListener('click', lukk);
+  $('tb-avbryt').addEventListener('click', lukk);
+  $('tb').addEventListener('click', (e) => { if (e.target === $('tb')) lukk(); });
   felt.addEventListener('input', () => { status.textContent = ''; });
   $('tanke-svar-lagre').addEventListener('click', async () => {
     const tekst = felt.value.trim();
-    if (tekst === lagret) { status.textContent = 'Lagret'; return; }
+    if (tekst === lagret) { lukk(); return; }
     status.textContent = 'Lagrer …';
     try {
       if (tekst) {
@@ -184,8 +188,8 @@ async function tankeSvar(lapp) {
         await deleteDoc(ref);
       }
       lagret = tekst;
-      status.textContent = tekst ? 'Lagret' : 'Slettet';
-      vis(true);
+      merk();
+      lukk();
     } catch (err) {
       status.textContent = err && err.code === 'permission-denied'
         ? 'Ingen tilgang: regelen for tilbakemelding er ikke limt inn i Firebase ennå.'
@@ -193,11 +197,8 @@ async function tankeSvar(lapp) {
     }
   });
   const snap = await getDoc(ref);
-  if (snap.exists()) {
-    lagret = snap.data().kommentar || '';
-    felt.value = lagret;
-  }
-  vis(false);
+  if (snap.exists()) lagret = snap.data().kommentar || '';
+  merk();
 }
 
 // Henter alt fra og med `from` som ikke allerede er lastet.

@@ -10,8 +10,8 @@
   <link rel="icon" href="/avis/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/avis/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css?v=37d5e31">
-  <link rel="stylesheet" href="css/avis.css?v=37d5e31">
+  <link rel="stylesheet" href="/css/style.css?v=4685394">
+  <link rel="stylesheet" href="css/avis.css?v=4685394">
 </head>
 <body>
   <a class="skip-link" href="#main">Hopp til innholdet</a>
@@ -63,12 +63,8 @@
         <div class="saker" id="eldre"></div>
       </section>
 
-      <!-- Tilbakemelding på hele utgaven, med ord. Valgfri. -->
-      <div class="kommentar utgave-kommentar">
-        <label for="u-kommentar">Tilbakemelding på dagens avis <span class="valgfri">(valgfritt)</span></label>
-        <textarea id="u-kommentar" rows="2" maxlength="2000" placeholder="Hva var bra, hva savnet du, hva var dårlig skrevet?"></textarea>
-        <div class="kommentar-rad"><span class="kommentar-status" id="u-status" aria-live="polite"></span><button class="btn" type="button" id="u-lagre">Lagre</button></div>
-      </div>
+      <!-- Tilbakemelding på hele utgaven: knappen åpner popupen. -->
+      <div class="utgave-tb"><button class="btn tb-knapp" type="button" id="u-tb" aria-pressed="false">Tilbakemelding på dagens avis</button></div>
 
       <!-- Saker som var vurdert da siden ble lastet: skjult, men kan hentes fram igjen. -->
       <div class="leste-rad"><button class="btn" type="button" id="vis-leste" aria-pressed="false" hidden>Vis vurderte</button></div>
@@ -94,16 +90,34 @@
         <h3 id="d-kilder-tittel">Kilder</h3>
         <ul class="kilder" id="d-kilder"></ul>
       </div>
-      <div class="kommentar">
-        <label for="d-kommentar">Tilbakemelding <span class="valgfri">(valgfritt)</span></label>
-        <textarea id="d-kommentar" rows="2" maxlength="1000" placeholder="F.eks. godt tema, men dårlig skrevet"></textarea>
-        <div class="kommentar-rad"><span class="kommentar-status" id="d-status" aria-live="polite"></span><button class="btn" type="button" id="d-lagre">Lagre</button></div>
-      </div>
       <div class="dialog-bunn" id="d-bunn"></div>
     </div>
   </dialog>
 
-  <script src="/js/theme.js?v=37d5e31"></script>
-  <script type="module" src="js/avis.js?v=37d5e31"></script>
+  <!-- Tilbakemelding med ord: popup over siden eller over saken. Lukkes med Avbryt, ✕, Esc
+       eller klikk utenfor; «Lagre» lagrer og lukker. -->
+  <dialog class="sak-dialog tb-dialog" id="tb" aria-labelledby="tb-tittel">
+    <div class="dialog-inner">
+      <div class="dialog-top">
+        <h2 id="tb-tittel">Tilbakemelding</h2>
+        <button class="lukk" type="button" id="tb-lukk" aria-label="Lukk" title="Lukk">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="tb-om" id="tb-om"></p>
+      <div class="kommentar">
+        <label class="sr-only" for="tb-tekst">Tilbakemelding</label>
+        <textarea id="tb-tekst" rows="5" maxlength="2000" placeholder="F.eks. godt tema, men dårlig skrevet"></textarea>
+      </div>
+      <div class="kommentar-rad">
+        <span class="kommentar-status" id="tb-status" aria-live="polite"></span>
+        <button class="btn" type="button" id="tb-avbryt">Avbryt</button>
+        <button class="btn btn-primary" type="button" id="tb-lagre">Lagre</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/js/theme.js?v=4685394"></script>
+  <script type="module" src="js/avis.js?v=4685394"></script>
 </body>
 </html>
