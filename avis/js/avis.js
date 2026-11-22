@@ -14,6 +14,11 @@
 // ble lastet, dempet og med tommelen trykket inn, så de kan åpnes eller vurderes på nytt.
 // Et trykk på tommelen som alt er trykket inn, angrer vurderingen.
 //
+// Tilbakemelding med ord: hver sak har et valgfritt tekstfelt i dialogen (knappen med snakkeboblen
+// på kortet åpner den), og hele utgaven har ett nederst. Teksten lagres i samme dokument som
+// tommelen (feltet kommentar); utgavens i avislest/<dato>__utgave. En kommentar alene skjuler ikke
+// saken: bare en tommel gjør det. Nattjobben leser tomler og kommentarer som små hint, se skillen.
+//
 // Dagens stilling: utgaven kan ha én utlyst stilling i Stockholm (feltet stilling), vist i et eget
 // kort under sakene med de samme tomlene. Den lagres i avislest som en sak med seksjon «stilling»,
 // og følger ikke med til nye utgaver: hver utgave har sin egen.
@@ -38,8 +43,10 @@ let alle = [];              // alle sakene i visningen, også de som var vurdert
 let saker = [];             // sakene som vises nå
 let visLeste = false;       // «Vis vurderte» er trykket inn
 let seksjon = 'alle';
-let lagre = null;           // (sak, verdi) => Promise, verdi 1, -1 eller null; null i lokal forhåndsvisning
+let lagre = null;           // (sak) => Promise som skriver tommel og kommentar; null i lokal forhåndsvisning
 let vurdFor = new Map();    // nøkkel → 1, -1 eller 0 (gammelt «lest») da siden ble lastet: vises ikke
+let komm = new Map();       // nøkkel → kommentaren slik den er lagret
+let utgaveDato = null;      // utgaven som vises, for kommentaren til hele utgaven
 let vurdNa = new Map();     // vurderingene nå, også de som er gjort i denne visningen (vises dempet)
 let apen = null;            // saken som er åpen i dialogen
 
@@ -95,6 +102,9 @@ function render(data, eldre = []) {
   visLeste = false;
   alle = [...normaliser(data, false), ...eldre.flatMap((u) => normaliser(u, true))];
   vurdNa = new Map(alle.filter((s) => vurdFor.has(s.nokkel)).map((s) => [s.nokkel, vurdFor.get(s.nokkel)]));
+  utgaveDato = data.dato;
+  $('u-kommentar').value = komm.get(data.dato + '__utgave') || '';
+  $('u-status').textContent = '';
   velgSaker();
   $('dag-tittel').textContent = stor(DAG.format(somDato(data.dato)));
   $('ingress').textContent = data.ingress || '';
@@ -176,6 +186,8 @@ const TOMLER_STILLING = [
   { verdi: -1, cls: 'ned', tekst: 'Dårlig forslag', title: 'Tommel ned: ikke noe for meg, færre som denne.' },
 ];
 
+const BOBLE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/></svg>';
+
 // To knapper i en gruppe. data-nokkel sier hvilken sak de gjelder, så sett() finner dem alle.
 function tommelKnapper(sak, stor) {
   const g = el('div', 'tomler');
@@ -209,7 +221,15 @@ function kort(sak, hoved) {
   apne.addEventListener('click', () => apneSak(sak));
   h.append(apne);
   const bunn = el('div', 'sak-bunn');
-  bunn.append(tommelKnapper(sak, false));
+  const kb = el('button', 'btn kommenter');
+  kb.type = 'button';
+  kb.dataset.nokkel = sak.nokkel;
+  kb.title = 'Skriv en tilbakemelding på saken';
+  kb.setAttribute('aria-label', 'Skriv en tilbakemelding');
+  kb.setAttribute('aria-pressed', String(!!komm.get(sak.nokkel)));
+  kb.innerHTML = BOBLE;
+  kb.addEventListener('click', (e) => { e.stopPropagation(); apneSak(sak, true); });
+  bunn.append(kb, tommelKnapper(sak, false));
   a.append(meta(sak, seksjon === 'alle'), h, el('p', 'sak-tekst', sak.sammendrag), bunn);
   return a;
 }
@@ -257,16 +277,44 @@ async function vurder(sak, verdi) {
   sett(sak.nokkel, ny);
   if (!lagre) return;
   try {
-    await lagre(sak, ny);
+    await lagre(sak);
   } catch (err) {
     sett(sak.nokkel, for_);
     say('Klarte ikke å lagre vurderingen (' + (err && err.code ? err.code : 'ukjent feil') + ').');
   }
 }
 
+// ---------- Tilbakemelding med ord ----------
+
+async function lagreKommentar(sak, tekst, status) {
+  const for_ = komm.get(sak.nokkel) || '';
+  tekst = tekst.trim();
+  if (tekst === for_) { status.textContent = 'Lagret'; return; }
+  if (tekst) komm.set(sak.nokkel, tekst); else komm.delete(sak.nokkel);
+  status.textContent = 'Lagrer …';
+  try {
+    if (lagre) await lagre(sak);
+    status.textContent = tekst ? 'Lagret' : 'Slettet';
+    for (const b of document.querySelectorAll('.kommenter')) {
+      if (b.dataset.nokkel === sak.nokkel) b.setAttribute('aria-pressed', String(!!tekst));
+    }
+  } catch (err) {
+    if (for_) komm.set(sak.nokkel, for_); else komm.delete(sak.nokkel);
+    status.textContent = 'Klarte ikke å lagre (' + (err && err.code ? err.code : 'ukjent feil') + ')';
+  }
+}
+
+// Hele utgaven lagres som en «sak» med id __utgave.
+const utgaveSak = () => ({ id: '__utgave', dato: utgaveDato, nokkel: utgaveDato + '__utgave', tittel: 'Hele utgaven', sek: { id: 'utgave' } });
+$('u-lagre').addEventListener('click', () => lagreKommentar(utgaveSak(), $('u-kommentar').value, $('u-status')));
+$('d-lagre').addEventListener('click', () => { if (apen) lagreKommentar(apen, $('d-kommentar').value, $('d-status')); });
+for (const [felt, status] of [['u-kommentar', 'u-status'], ['d-kommentar', 'd-status']]) {
+  $(felt).addEventListener('input', () => { $(status).textContent = ''; });
+}
+
 // ---------- Dialogen med hele saken ----------
 
-function apneSak(sak) {
+function apneSak(sak, skriv) {
   apen = sak;
   $('d-meta').replaceWith(Object.assign(meta(sak, true), { id: 'd-meta' }));
   $('d-tittel').textContent = sak.tittel;
@@ -289,7 +337,10 @@ function apneSak(sak) {
     ul.append(li);
   }
   $('d-bunn').replaceChildren(tommelKnapper(sak, true));
+  $('d-kommentar').value = komm.get(sak.nokkel) || '';
+  $('d-status').textContent = '';
   $('dialog').showModal();
+  if (skriv) $('d-kommentar').focus();
 }
 
 $('lukk').addEventListener('click', () => $('dialog').close());
@@ -328,12 +379,20 @@ if (lokal) {
 } else {
   const db = getFirestore(app);
   const avis = collection(db, 'avis');
-  lagre = (sak, verdi) => (verdi
-    ? setDoc(doc(db, 'avislest', sak.nokkel), {
-      dato: sak.dato, sak: sak.id, tittel: sak.tittel, seksjon: sak.sek.id,
-      vurdering: verdi, lest: new Date().toISOString(),
-    })
-    : deleteDoc(doc(db, 'avislest', sak.nokkel)));
+  // Skriver hele tilstanden til saken: tommel (også 0 for gamle «lest») og kommentar.
+  // Uten noen av delene slettes dokumentet.
+  lagre = (sak) => {
+    const ref = doc(db, 'avislest', sak.nokkel);
+    const verdi = vurdNa.has(sak.nokkel) ? vurdNa.get(sak.nokkel) : null;
+    const tekst = komm.get(sak.nokkel) || '';
+    if (verdi == null && !tekst) return deleteDoc(ref);
+    const d = {
+      dato: sak.dato, sak: sak.id, tittel: sak.tittel, seksjon: sak.sek.id, lest: new Date().toISOString(),
+    };
+    if (verdi != null) d.vurdering = verdi;
+    if (tekst) d.kommentar = tekst;
+    return setDoc(ref, d);
+  };
 
   const nabo = async (dato, op) => {
     const q = query(avis, where('dato', op, dato), orderBy('dato', op === '<' ? 'desc' : 'asc'), limit(1));
@@ -370,7 +429,15 @@ if (lokal) {
         const r = await getDocs(query(avis, where('dato', '>=', fra), where('dato', '<', data.dato), orderBy('dato', 'desc')));
         eldre = r.docs.map((d) => JSON.parse(d.data().json));
       }
-      vurdFor = new Map(lest.docs.map((d) => [d.id, d.data().vurdering || 0]));
+      // En tommel (eller et gammelt «lest» uten kommentar) skjuler saken; en kommentar alene gjør det ikke.
+      vurdFor = new Map();
+      komm = new Map();
+      for (const d of lest.docs) {
+        const v = d.data();
+        if (typeof v.vurdering === 'number') vurdFor.set(d.id, v.vurdering);
+        else if (!v.kommentar) vurdFor.set(d.id, 0);
+        if (v.kommentar) komm.set(d.id, v.kommentar);
+      }
       render(data, eldre);
       settNav(forrige, neste);
     } catch (err) {

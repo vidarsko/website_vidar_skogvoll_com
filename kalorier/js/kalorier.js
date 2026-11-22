@@ -11,6 +11,8 @@
 // Lose It-historikken ble importert én gang 2026-11-16; importen ble fjernet etterpå (se git-historikken).
 // «Dagens tanke» over rutenettet kommer fra private/motivasjon, skrevet hver natt av den nattlige
 // jobben i vaulten via workflowen motivasjon.yml. Teksten er Vidars og står ikke her.
+// Under lappen kan Vidar skrive en tilbakemelding, lagret i tilbakemelding/motivasjon_<dato>
+// (feltene app, dato, tittel, kommentar, tid). Nattjobben leser den som et lite hint.
 // Se kalorier_private/AGENTS.md.
 
 import {
@@ -145,12 +147,57 @@ async function loadTanke() {
   try { lukket = localStorage.getItem('tanke-lukket'); } catch (e) {}
   $('tanke').open = lukket !== lapp.dato;
   $('tanke').hidden = false;
+  tankeSvar(lapp).catch(() => {}); // tilbakemeldingen skal aldri stoppe lappen
   $('tanke').addEventListener('toggle', () => {
     try {
       if ($('tanke').open) localStorage.removeItem('tanke-lukket');
       else localStorage.setItem('tanke-lukket', lapp.dato);
     } catch (e) {}
   });
+}
+
+// Tilbakemelding på lappen: skjult bak en knapp, så lappen er ren. Tom tekst sletter den.
+async function tankeSvar(lapp) {
+  const ref = doc(db, 'tilbakemelding', 'motivasjon_' + lapp.dato);
+  const felt = $('tanke-kommentar');
+  const status = $('tanke-svar-status');
+  const knapp = $('tanke-svar-knapp');
+  let lagret = '';
+  const vis = (apen) => {
+    $('tanke-svar-felt').hidden = !apen;
+    knapp.setAttribute('aria-expanded', String(apen));
+    knapp.textContent = lagret ? 'Din tilbakemelding' : 'Gi tilbakemelding';
+  };
+  knapp.addEventListener('click', () => {
+    vis($('tanke-svar-felt').hidden);
+    if (!$('tanke-svar-felt').hidden) felt.focus();
+  });
+  felt.addEventListener('input', () => { status.textContent = ''; });
+  $('tanke-svar-lagre').addEventListener('click', async () => {
+    const tekst = felt.value.trim();
+    if (tekst === lagret) { status.textContent = 'Lagret'; return; }
+    status.textContent = 'Lagrer …';
+    try {
+      if (tekst) {
+        await setDoc(ref, { app: 'motivasjon', dato: lapp.dato, tittel: lapp.tittel, kommentar: tekst, tid: new Date().toISOString() });
+      } else {
+        await deleteDoc(ref);
+      }
+      lagret = tekst;
+      status.textContent = tekst ? 'Lagret' : 'Slettet';
+      vis(true);
+    } catch (err) {
+      status.textContent = err && err.code === 'permission-denied'
+        ? 'Ingen tilgang: regelen for tilbakemelding er ikke limt inn i Firebase ennå.'
+        : 'Klarte ikke å lagre (' + (err && err.code ? err.code : 'ukjent feil') + ').';
+    }
+  });
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    lagret = snap.data().kommentar || '';
+    felt.value = lagret;
+  }
+  vis(false);
 }
 
 // Henter alt fra og med `from` som ikke allerede er lastet.

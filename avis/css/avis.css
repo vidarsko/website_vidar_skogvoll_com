@@ -68,6 +68,23 @@ main { grid-template-columns: minmax(0, 1fr); }
 .tommel.ned svg { transform: scale(1, -1); }
 .tommel.opp[aria-pressed="true"] { color: var(--success); border-color: currentColor; }
 .tommel.ned[aria-pressed="true"] { color: var(--danger); border-color: currentColor; }
+.sak-bunn { gap: 8px; }
+.kommenter { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; min-width: 44px; padding: 6px 12px; margin-right: auto; }
+.kommenter[aria-pressed="true"] { color: var(--accent); border-color: currentColor; }
+
+/* Tilbakemelding med ord: i dialogen og for hele utgaven */
+.kommentar { display: grid; gap: 6px; }
+.kommentar label { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.kommentar .valgfri { font-weight: 400; }
+.kommentar textarea {
+  width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; font: inherit; font-size: 15px;
+  color: var(--text); background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+}
+.kommentar textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.kommentar-rad { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.kommentar-status { font-size: 13px; color: var(--text-muted); }
+.utgave-kommentar { padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+
 .sak.er-lest { opacity: 0.55; }
 .sak.er-lest:hover, .sak.er-lest:focus-within { opacity: 0.85; }
 .tom { grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 32px 16px; }
