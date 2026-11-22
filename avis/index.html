@@ -10,8 +10,8 @@
   <link rel="icon" href="/avis/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/avis/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css?v=4685394">
-  <link rel="stylesheet" href="css/avis.css?v=4685394">
+  <link rel="stylesheet" href="/css/style.css?v=f428826">
+  <link rel="stylesheet" href="css/avis.css?v=f428826">
 </head>
 <body>
   <a class="skip-link" href="#main">Hopp til innholdet</a>
@@ -63,11 +63,13 @@
         <div class="saker" id="eldre"></div>
       </section>
 
+      <!-- Saker fra denne utgaven som var vurdert da siden ble lastet: skjult, men kan hentes
+           fram igjen. Knappen står over dem, så «Skjul vurderte» er der de begynner. -->
+      <div class="leste-rad"><button class="btn" type="button" id="vis-leste" aria-pressed="false" hidden>Vis vurderte</button></div>
+      <div class="saker" id="vurderte" hidden></div>
+
       <!-- Tilbakemelding på hele utgaven: knappen åpner popupen. -->
       <div class="utgave-tb"><button class="btn tb-knapp" type="button" id="u-tb" aria-pressed="false">Tilbakemelding på dagens avis</button></div>
-
-      <!-- Saker som var vurdert da siden ble lastet: skjult, men kan hentes fram igjen. -->
-      <div class="leste-rad"><button class="btn" type="button" id="vis-leste" aria-pressed="false" hidden>Vis vurderte</button></div>
     </div>
   </main>
 
@@ -117,7 +119,7 @@
     </div>
   </dialog>
 
-  <script src="/js/theme.js?v=4685394"></script>
-  <script type="module" src="js/avis.js?v=4685394"></script>
+  <script src="/js/theme.js?v=f428826"></script>
+  <script type="module" src="js/avis.js?v=f428826"></script>
 </body>
 </html>

@@ -25,7 +25,8 @@
 //
 // Lokal forhåndsvisning uten Firebase: start en server i repoets rot (python -m http.server)
 // og åpne http://localhost:8000/avis/?fil=2026-11-17, som leser tools/avis/2026-11-17.json.
-// &eldre=2026-11-16 legger til en eldre utgave. Vurderingene huskes da bare til siden lastes på nytt.
+// &eldre=2026-11-16 legger til en eldre utgave, og &vurdert=<dato>_<sak-id> later som en sak var
+// vurdert da siden ble lastet. Vurderingene huskes da bare til siden lastes på nytt.
 // Det virker bare på localhost, og tools/ publiseres ikke.
 
 import {
@@ -115,15 +116,18 @@ function render(data, eldre = []) {
   $('avis').hidden = false;
 }
 
-// Det som var vurdert da siden ble lastet, er skjult, med mindre «Vis vurderte» er trykket inn.
-// En sak som får vurderingen angret mens de vises, blir stående når de skjules igjen.
+// Det som var vurdert da siden ble lastet, er skjult. «Vis vurderte» viser de vurderte sakene fra
+// utgaven som vises (ikke fra dagene før) i en egen blokk under knappen. En sak som får
+// vurderingen angret der, blir stående til knappen trykkes igjen.
 const skjult = (s) => vurdFor.has(s.nokkel) && vurdNa.has(s.nokkel);
+let vurderte = [];          // skjulte saker fra utgaven som vises
 function velgSaker() {
-  saker = alle.filter((s) => visLeste || !skjult(s));
+  saker = alle.filter((s) => !skjult(s));
+  vurderte = alle.filter((s) => skjult(s) && !s.eldre);
 }
 
 function tegnLesteKnapp() {
-  const n = alle.filter(skjult).length;
+  const n = vurderte.length;
   const b = $('vis-leste');
   b.hidden = !n && !visLeste;
   b.setAttribute('aria-pressed', String(visLeste));
@@ -134,7 +138,7 @@ function tegnFilter() {
   const f = $('filter');
   f.replaceChildren();
   const valg = [{ id: 'alle', navn: 'Alle' }];
-  for (const s of saker) if (!s.stilling && !valg.some((v) => v.id === s.sek.id)) valg.push(s.sek);
+  for (const s of visLeste ? [...saker, ...vurderte] : saker) if (!s.stilling && !valg.some((v) => v.id === s.sek.id)) valg.push(s.sek);
   f.hidden = valg.length <= 2; // én seksjon: ingenting å velge mellom
   for (const v of valg) {
     const b = el('button');
@@ -244,6 +248,13 @@ function tegnSaker() {
   eb.replaceChildren();
   for (const s of gamle) eb.append(kort(s, false));
   $('eldre-blokk').hidden = !gamle.length;
+
+  const vb = $('vurderte');
+  vb.replaceChildren();
+  if (visLeste) {
+    for (const s of vurderte.filter((x) => seksjon === 'alle' || x.sek.id === seksjon)) vb.append(kort(s, false));
+  }
+  vb.hidden = !visLeste;
   tegnLesteKnapp();
 }
 
@@ -358,7 +369,7 @@ function apneSak(sak) {
 $('lukk').addEventListener('click', () => $('dialog').close());
 $('vis-leste').addEventListener('click', () => {
   visLeste = !visLeste;
-  velgSaker();
+  if (!visLeste) velgSaker(); // det som er angret i blokken, flytter opp til sakene
   tegnFilter();
   tegnSaker();
 });
@@ -384,7 +395,11 @@ mountAuthBar($('auth'));
 if (lokal) {
   const hent = (f) => fetch('/tools/avis/' + f + '.json').then((r) => r.json());
   Promise.all([hent(lokal), ...params.getAll('eldre').map(hent)])
-    .then(([data, ...eldre]) => { render(data, eldre); settNav(null, null); })
+    .then(([data, ...eldre]) => {
+      vurdFor = new Map(params.getAll('vurdert').map((k) => [k, 1])); // &vurdert=<dato>_<sak-id>
+      render(data, eldre);
+      settNav(null, null);
+    })
     .catch(() => say('Fant ikke tools/avis/' + lokal + '.json.'));
 } else if (!configured) {
   say('Innloggingen er ikke satt opp ennå: js/firebase-config.js mangler verdiene fra Firebase-prosjektet.');
