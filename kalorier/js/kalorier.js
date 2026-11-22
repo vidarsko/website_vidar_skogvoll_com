@@ -25,6 +25,14 @@ const $ = (id) => document.getElementById(id);
 const db = configured ? getFirestore(app) : null;
 const LOG = 'matlogg';
 const WEEKS_STEP = 10;
+// Mellomlager i nettleseren, så en vanlig åpning ikke leser hele matloggen for 10 uker på nytt
+// (ca. 470 lesinger, nær Spark-grensen på 50 000 per døgn når appen åpnes mange ganger).
+// Uker eldre enn forrige uke tas fra lageret; denne og forrige uke leses alltid fra Firestore.
+// Én gang i uka leses alt på nytt, så en endring i en gammel uke fra en annen enhet kommer med.
+const CACHE_KEY = 'kalorier-matlogg-v1';
+const FULL_EVERY = 7 * 864e5;
+let currentUid = null;
+let fullAt = 0;
 
 let setup = null;
 const cats = new Map();
@@ -32,6 +40,49 @@ let entries = []; // { id, t: Date, kat, kcal, notat, kilde }
 let loadedFrom = null;
 let day = startOfDay(new Date());
 let followToday = true; // står på «I dag»: hopp til ny dag over midnatt
+
+// ---- Mellomlager ----
+
+function writeCache() {
+  if (!currentUid || !loadedFrom) return;
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      uid: currentUid, fullAt, from: loadedFrom.getTime(),
+      rows: entries.map((e) => ({ ...e, t: e.t.getTime() })),
+    }));
+  } catch (e) { /* full eller blokkert lagring: neste åpning leser alt */ }
+}
+
+function clearCache() {
+  try { localStorage.removeItem(CACHE_KEY); } catch (e) {}
+}
+
+// Første lasting: fra lageret hvis det finnes og er under en uke gammelt, ellers alt fra Firestore.
+async function loadInitial(from) {
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)); } catch (e) {}
+  if (cache && cache.uid === currentUid && Date.now() - cache.fullAt < FULL_EVERY && cache.from) {
+    const fresh = addDays(mondayOf(new Date()), -7);
+    const cachedFrom = new Date(cache.from);
+    if (cachedFrom < fresh) {
+      const snap = await getDocs(query(collection(db, LOG), where('t', '>=', Timestamp.fromDate(fresh)), orderBy('t')));
+      entries = cache.rows
+        .map((r) => ({ ...r, t: new Date(r.t) }))
+        .filter((e) => e.t < fresh)
+        .concat(snap.docs.map(fromDoc));
+      loadedFrom = cachedFrom;
+      fullAt = cache.fullAt;
+      await ensureFrom(from); // henter bare det som ligger før lageret, om noe
+      writeCache();
+      return;
+    }
+  }
+  entries = [];
+  loadedFrom = null;
+  await ensureFrom(from);
+  fullAt = Date.now();
+  writeCache();
+}
 
 // ---- Datoer og tall ----
 
@@ -209,6 +260,7 @@ async function ensureFrom(from) {
   const snap = await getDocs(query(collection(db, LOG), ...parts, orderBy('t')));
   entries = snap.docs.map(fromDoc).concat(entries);
   loadedFrom = from;
+  writeCache();
 }
 
 // ---- Visning ----
@@ -235,6 +287,7 @@ function render() {
   renderDay();
   renderWeek();
   renderWeeks();
+  writeCache(); // render kommer etter hver endring (lagre, slette, angre)
 }
 
 function renderDay() {
@@ -554,8 +607,12 @@ if (!configured) {
   say('Innloggingen er ikke satt opp: js/firebase-config.js mangler verdiene fra Firebase.');
 } else {
   onUser(async (user) => {
+    currentUid = user ? user.uid : null;
     if (!user) {
       $('content').hidden = true;
+      entries = [];
+      loadedFrom = null;
+      clearCache();
       say('Appen er privat.', true);
       return;
     }
@@ -565,7 +622,7 @@ if (!configured) {
         say('Oppsettet mangler i Firestore. Kjør workflowen «Kalorier» med modus «oppsett» i builder-repoet.');
         return;
       }
-      await ensureFrom(addDays(mondayOf(new Date()), -7 * WEEKS_STEP));
+      await loadInitial(addDays(mondayOf(new Date()), -7 * WEEKS_STEP));
       say('');
       renderGrids();
       render();
