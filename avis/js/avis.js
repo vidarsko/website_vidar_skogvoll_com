@@ -19,6 +19,12 @@
 // tommelen (feltet kommentar); utgavens i avislest/<dato>__utgave. En kommentar alene skjuler ikke
 // saken: bare en tommel gjør det. Nattjobben leser tomler og kommentarer som små hint, se skillen.
 //
+// Legg til i vaulten og Lag oppgave: to knapper på hvert kort og i dialogen (ikke på hele utgaven)
+// åpner den samme popupen. «Legg til i vaulten» lagrer Vidars forklaring på hvordan saken skal inn
+// (feltet vault), «Lag oppgave» ber om en oppgave i vaultens Tasks/ (feltet oppgave, teksten er
+// valgfri og kan være tom). Begge ligger i samme avislest-dokument som tommelen, skjuler ikke
+// saken, og utføres av nattjobben, som leser dem fra eksporten. «Fjern» i popupen trekker ønsket.
+//
 // Dagens stilling: utgaven kan ha én utlyst stilling i Stockholm (feltet stilling), vist i et eget
 // kort under sakene med de samme tomlene. Den lagres i avislest som en sak med seksjon «stilling»,
 // og følger ikke med til nye utgaver: hver utgave har sin egen.
@@ -47,6 +53,8 @@ let seksjon = 'alle';
 let lagre = null;           // (sak) => Promise som skriver tommel og kommentar; null i lokal forhåndsvisning
 let vurdFor = new Map();    // nøkkel → 1, -1 eller 0 (gammelt «lest») da siden ble lastet: vises ikke
 let komm = new Map();       // nøkkel → kommentaren slik den er lagret
+let vault = new Map();      // nøkkel → forklaringen på hvordan saken skal inn i vaulten
+let oppg = new Map();       // nøkkel → merknad til oppgaven ('' er lov: bare «lag en oppgave»)
 let utgaveDato = null;      // utgaven som vises, for kommentaren til hele utgaven
 let vurdNa = new Map();     // vurderingene nå, også de som er gjort i denne visningen (vises dempet)
 let apen = null;            // saken som er åpen i dialogen
@@ -224,7 +232,7 @@ function kort(sak, hoved) {
   apne.addEventListener('click', () => apneSak(sak));
   h.append(apne);
   const bunn = el('div', 'sak-bunn');
-  bunn.append(tbKnapp(sak), tommelKnapper(sak, false));
+  bunn.append(tbKnapp(sak), onskeKnapper(sak, false), tommelKnapper(sak, false));
   a.append(meta(sak, seksjon === 'alle'), h, el('p', 'sak-tekst', sak.sammendrag), bunn);
   return a;
 }
@@ -288,6 +296,24 @@ async function vurder(sak, verdi) {
 
 // ---------- Tilbakemelding med ord ----------
 
+// De tre tingene popupen kan skrive. map er der teksten holdes; tom: om tom tekst er et gyldig ønske.
+const MODUS = {
+  kommentar: {
+    map: () => komm, tittel: 'Tilbakemelding', tom: false, cls: 'tb-knapp',
+    hint: 'F.eks. godt tema, men dårlig skrevet',
+  },
+  vault: {
+    map: () => vault, tittel: 'Legg til i vaulten', tom: false, cls: 'vault-knapp',
+    hint: 'Hvordan skal den inn? F.eks. som kilde i Sources, en linje i prosjektet Lære med KI, eller et sitat i foredraget om …',
+    forklaring: 'Nattjobben legger den inn slik du skriver, og sier fra i rapporten.',
+  },
+  oppgave: {
+    map: () => oppg, tittel: 'Lag oppgave', tom: true, cls: 'oppg-knapp',
+    hint: 'Valgfritt: hva oppgaven er, frist, prosjekt …',
+    forklaring: 'Nattjobben lager en oppgave i Tasks/. Du kan la feltet stå tomt.',
+  },
+};
+
 // Knappen «Tilbakemelding». aria-pressed viser at det finnes en lagret tilbakemelding.
 function tbKnapp(sak) {
   const b = el('button', 'btn tb-knapp', 'Tilbakemelding');
@@ -295,44 +321,96 @@ function tbKnapp(sak) {
   b.dataset.nokkel = sak.nokkel;
   b.title = 'Skriv hva du synes om saken';
   b.setAttribute('aria-pressed', String(!!komm.get(sak.nokkel)));
-  b.addEventListener('click', (e) => { e.stopPropagation(); apneTb(sak); });
+  b.addEventListener('click', (e) => { e.stopPropagation(); apneTb(sak, 'kommentar'); });
   return b;
 }
 
-let tbSak = null; // saken popupen gjelder
-function apneTb(sak) {
+// «Legg til i vaulten» og «Lag oppgave». På kortet bare ikonet, i dialogen med tekst.
+const IKON = {
+  vault: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/><path d="M12 7v6M9 10h6"/></svg>',
+  oppgave: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12l3 3 5-6"/></svg>',
+};
+function onskeKnapper(sak, stor) {
+  const g = el('div', 'onsker');
+  g.setAttribute('role', 'group');
+  g.setAttribute('aria-label', 'Til vaulten');
+  for (const modus of ['vault', 'oppgave']) {
+    const m = MODUS[modus];
+    const b = el('button', 'btn onske ' + m.cls + (stor ? ' stor' : ''));
+    b.type = 'button';
+    b.dataset.nokkel = sak.nokkel;
+    b.title = m.tittel;
+    b.setAttribute('aria-label', m.tittel);
+    b.setAttribute('aria-pressed', String(m.map().has(sak.nokkel)));
+    b.innerHTML = IKON[modus] + (stor ? '<span>' + m.tittel + '</span>' : '');
+    b.addEventListener('click', (e) => { e.stopPropagation(); apneTb(sak, modus); });
+    g.append(b);
+  }
+  return g;
+}
+
+let tbSak = null;   // saken popupen gjelder
+let tbModus = 'kommentar';
+function apneTb(sak, modus) {
+  const m = MODUS[modus];
   tbSak = sak;
+  tbModus = modus;
+  $('tb-tittel').textContent = m.tittel;
   $('tb-om').textContent = sak.id === '__utgave' ? 'Om hele avisa ' + DAG.format(somDato(sak.dato)) + '.' : sak.tittel;
-  $('tb-tekst').value = komm.get(sak.nokkel) || '';
+  $('tb-forklaring').textContent = m.forklaring || '';
+  $('tb-forklaring').hidden = !m.forklaring;
+  $('tb-label').textContent = m.tittel;
+  $('tb-tekst').placeholder = m.hint;
+  $('tb-tekst').value = m.map().get(sak.nokkel) || '';
+  $('tb-fjern').hidden = modus === 'kommentar' || !m.map().has(sak.nokkel);
   $('tb-status').textContent = '';
   $('tb').showModal();
   $('tb-tekst').focus();
 }
 
-async function lagreKommentar() {
+function oppdaterKnapper(nokkel, modus) {
+  const m = MODUS[modus];
+  for (const b of document.querySelectorAll('.' + m.cls)) {
+    if (b.dataset.nokkel === nokkel) b.setAttribute('aria-pressed', String(m.map().has(nokkel) && (m.tom || !!m.map().get(nokkel))));
+  }
+}
+
+// fjern: trekk ønsket (vault, oppgave). Ellers lagres teksten; tom tekst fjerner en kommentar eller
+// en vault-forklaring, men er en gyldig oppgave.
+async function lagreTb(fjern) {
   const sak = tbSak;
+  const modus = tbModus;
   if (!sak) return;
-  const for_ = komm.get(sak.nokkel) || '';
+  const m = MODUS[modus];
+  const map = m.map();
+  const hadde = map.has(sak.nokkel);
+  const for_ = map.get(sak.nokkel);
   const tekst = $('tb-tekst').value.trim();
-  if (tekst === for_) { $('tb').close(); return; }
-  if (tekst) komm.set(sak.nokkel, tekst); else komm.delete(sak.nokkel);
+  if (!fjern && !tekst && !m.tom && modus !== 'kommentar') {
+    $('tb-status').textContent = 'Skriv hvordan den skal legges til';
+    $('tb-tekst').focus();
+    return;
+  }
+  const beholdes = !fjern && (tekst || m.tom);
+  if (beholdes && hadde && tekst === for_) { $('tb').close(); return; }
+  if (!beholdes && !hadde) { $('tb').close(); return; }
+  if (beholdes) map.set(sak.nokkel, tekst); else map.delete(sak.nokkel);
   $('tb-status').textContent = 'Lagrer …';
   try {
     if (lagre) await lagre(sak);
-    for (const b of document.querySelectorAll('.tb-knapp')) {
-      if (b.dataset.nokkel === sak.nokkel) b.setAttribute('aria-pressed', String(!!tekst));
-    }
+    oppdaterKnapper(sak.nokkel, modus);
     $('tb').close();
   } catch (err) {
-    if (for_) komm.set(sak.nokkel, for_); else komm.delete(sak.nokkel);
+    if (hadde) map.set(sak.nokkel, for_); else map.delete(sak.nokkel);
     $('tb-status').textContent = 'Klarte ikke å lagre (' + (err && err.code ? err.code : 'ukjent feil') + ')';
   }
 }
 
 // Hele utgaven lagres som en «sak» med id __utgave.
 const utgaveSak = () => ({ id: '__utgave', dato: utgaveDato, nokkel: utgaveDato + '__utgave', tittel: 'Hele utgaven', sek: { id: 'utgave' } });
-$('u-tb').addEventListener('click', () => apneTb(utgaveSak()));
-$('tb-lagre').addEventListener('click', lagreKommentar);
+$('u-tb').addEventListener('click', () => apneTb(utgaveSak(), 'kommentar'));
+$('tb-lagre').addEventListener('click', () => lagreTb(false));
+$('tb-fjern').addEventListener('click', () => lagreTb(true));
 $('tb-avbryt').addEventListener('click', () => $('tb').close());
 $('tb-lukk').addEventListener('click', () => $('tb').close());
 $('tb').addEventListener('click', (e) => { if (e.target === $('tb')) $('tb').close(); });
@@ -362,7 +440,7 @@ function apneSak(sak) {
     if (k.dato) li.append(el('span', 'kilde-dato', KORT.format(somDato(k.dato))));
     ul.append(li);
   }
-  $('d-bunn').replaceChildren(tbKnapp(sak), tommelKnapper(sak, true));
+  $('d-bunn').replaceChildren(tbKnapp(sak), onskeKnapper(sak, true), tommelKnapper(sak, true));
   $('dialog').showModal();
 }
 
@@ -406,18 +484,22 @@ if (lokal) {
 } else {
   const db = getFirestore(app);
   const avis = collection(db, 'avis');
-  // Skriver hele tilstanden til saken: tommel (også 0 for gamle «lest») og kommentar.
-  // Uten noen av delene slettes dokumentet.
+  // Skriver hele tilstanden til saken: tommel (også 0 for gamle «lest»), kommentar, vault-forklaring
+  // og oppgave. Uten noen av delene slettes dokumentet.
   lagre = (sak) => {
     const ref = doc(db, 'avislest', sak.nokkel);
     const verdi = vurdNa.has(sak.nokkel) ? vurdNa.get(sak.nokkel) : null;
     const tekst = komm.get(sak.nokkel) || '';
-    if (verdi == null && !tekst) return deleteDoc(ref);
+    const harVault = vault.has(sak.nokkel);
+    const harOppg = oppg.has(sak.nokkel);
+    if (verdi == null && !tekst && !harVault && !harOppg) return deleteDoc(ref);
     const d = {
       dato: sak.dato, sak: sak.id, tittel: sak.tittel, seksjon: sak.sek.id, lest: new Date().toISOString(),
     };
     if (verdi != null) d.vurdering = verdi;
     if (tekst) d.kommentar = tekst;
+    if (harVault) d.vault = vault.get(sak.nokkel);
+    if (harOppg) d.oppgave = oppg.get(sak.nokkel);
     return setDoc(ref, d);
   };
 
@@ -456,14 +538,19 @@ if (lokal) {
         const r = await getDocs(query(avis, where('dato', '>=', fra), where('dato', '<', data.dato), orderBy('dato', 'desc')));
         eldre = r.docs.map((d) => JSON.parse(d.data().json));
       }
-      // En tommel (eller et gammelt «lest» uten kommentar) skjuler saken; en kommentar alene gjør det ikke.
+      // En tommel (eller et gammelt «lest» uten noe annet) skjuler saken; en kommentar, en
+      // vault-forklaring eller en oppgave alene gjør det ikke.
       vurdFor = new Map();
       komm = new Map();
+      vault = new Map();
+      oppg = new Map();
       for (const d of lest.docs) {
         const v = d.data();
         if (typeof v.vurdering === 'number') vurdFor.set(d.id, v.vurdering);
-        else if (!v.kommentar) vurdFor.set(d.id, 0);
+        else if (!v.kommentar && v.vault == null && v.oppgave == null) vurdFor.set(d.id, 0);
         if (v.kommentar) komm.set(d.id, v.kommentar);
+        if (typeof v.vault === 'string') vault.set(d.id, v.vault);
+        if (typeof v.oppgave === 'string') oppg.set(d.id, v.oppgave);
       }
       render(data, eldre);
       settNav(forrige, neste);

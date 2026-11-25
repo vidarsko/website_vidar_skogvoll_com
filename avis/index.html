@@ -10,8 +10,8 @@
   <link rel="icon" href="/avis/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/avis/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css?v=68065a4">
-  <link rel="stylesheet" href="css/avis.css?v=68065a4">
+  <link rel="stylesheet" href="/css/style.css?v=9799a6a">
+  <link rel="stylesheet" href="css/avis.css?v=9799a6a">
 </head>
 <body>
   <a class="skip-link" href="#main">Hopp til innholdet</a>
@@ -96,7 +96,8 @@
     </div>
   </dialog>
 
-  <!-- Tilbakemelding med ord: popup over siden eller over saken. Lukkes med Avbryt, ✕, Esc
+  <!-- Tilbakemelding med ord, «Legg til i vaulten» og «Lag oppgave»: samme popup over siden eller
+       over saken, med tittel og hjelpetekst etter knappen. «Fjern» trekker et vault- eller oppgaveønske. Lukkes med Avbryt, ✕, Esc
        eller klikk utenfor; «Lagre» lagrer og lukker. -->
   <dialog class="sak-dialog tb-dialog" id="tb" aria-labelledby="tb-tittel">
     <div class="dialog-inner">
@@ -107,19 +108,21 @@
         </button>
       </div>
       <p class="tb-om" id="tb-om"></p>
+      <p class="tb-forklaring" id="tb-forklaring" hidden></p>
       <div class="kommentar">
-        <label class="sr-only" for="tb-tekst">Tilbakemelding</label>
+        <label class="sr-only" for="tb-tekst" id="tb-label">Tilbakemelding</label>
         <textarea id="tb-tekst" rows="5" maxlength="2000" placeholder="F.eks. godt tema, men dårlig skrevet"></textarea>
       </div>
       <div class="kommentar-rad">
         <span class="kommentar-status" id="tb-status" aria-live="polite"></span>
+        <button class="btn" type="button" id="tb-fjern" hidden>Fjern</button>
         <button class="btn" type="button" id="tb-avbryt">Avbryt</button>
         <button class="btn btn-primary" type="button" id="tb-lagre">Lagre</button>
       </div>
     </div>
   </dialog>
 
-  <script src="/js/theme.js?v=68065a4"></script>
-  <script type="module" src="js/avis.js?v=68065a4"></script>
+  <script src="/js/theme.js?v=9799a6a"></script>
+  <script type="module" src="js/avis.js?v=9799a6a"></script>
 </body>
 </html>

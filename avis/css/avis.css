@@ -72,6 +72,12 @@ main { grid-template-columns: minmax(0, 1fr); }
 .tb-knapp { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 40px; padding: 6px 14px; margin-right: auto; }
 .tb-knapp[aria-pressed="true"] { color: var(--accent); border-color: currentColor; }
 .dialog-bunn .tb-knapp { margin-right: auto; }
+/* Legg til i vaulten og Lag oppgave: ikon på kortet, ikon og tekst i dialogen. */
+.sak-bunn { flex-wrap: wrap; }
+.onsker { position: relative; z-index: 1; display: flex; gap: 8px; }
+.onske { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; min-width: 44px; padding: 6px 12px; }
+.onske[aria-pressed="true"] { color: var(--accent); border-color: currentColor; }
+.tb-forklaring { font-size: 14px; color: var(--text-muted); margin-top: -8px; }
 .utgave-tb { display: flex; justify-content: center; }
 
 /* Popupen for tilbakemelding */
