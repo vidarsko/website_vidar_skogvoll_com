@@ -22,6 +22,8 @@ main { grid-template-columns: minmax(0, 1fr); }
 .dag { display: flex; align-items: center; gap: 8px; }
 .dag-head { flex: 1; min-width: 0; display: grid; gap: 4px; text-align: center; }
 .dag-head h1 { font-size: 32px; font-weight: 800; line-height: 1.2; }
+.idag { justify-self: center; padding: 4px 14px; font-size: 13px; }
+.idag[hidden] { display: none; }
 .ingress { color: var(--text-muted); max-width: 60ch; margin: 0 auto; }
 .nav-btn {
   display: grid; place-items: center; width: 44px; height: 44px; flex: none; cursor: pointer;

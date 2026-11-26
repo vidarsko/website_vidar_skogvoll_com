@@ -10,8 +10,8 @@
   <link rel="icon" href="/avis/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/avis/apple-touch-icon.png">
   <script>try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <link rel="stylesheet" href="/css/style.css?v=6bec68c">
-  <link rel="stylesheet" href="css/avis.css?v=6bec68c">
+  <link rel="stylesheet" href="/css/style.css?v=508bf91">
+  <link rel="stylesheet" href="css/avis.css?v=508bf91">
 </head>
 <body>
   <a class="skip-link" href="#main">Hopp til innholdet</a>
@@ -33,13 +33,15 @@
     <p class="notice" id="notice" hidden></p>
 
     <div class="avis" id="avis" hidden>
-      <!-- Dagen: bla mellom utgavene med pilene. Lenke til en bestemt dag: /avis/#2026-11-18 -->
+      <!-- Dagen: bla mellom utgavene med pilene. Lenke til en bestemt dag: /avis/#2026-11-18.
+           «I dag» hopper til dagens dato (norsk tid) og vises bare når en annen dag står framme. -->
       <div class="dag">
         <button class="nav-btn" type="button" id="forrige" aria-label="Forrige utgave" title="Forrige utgave" disabled>
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
         <div class="dag-head">
           <h1 id="dag-tittel"></h1>
+          <button class="btn idag" type="button" id="idag" hidden>I dag</button>
           <p class="ingress" id="ingress"></p>
         </div>
         <button class="nav-btn" type="button" id="neste" aria-label="Neste utgave" title="Neste utgave" disabled>
@@ -122,7 +124,7 @@
     </div>
   </dialog>
 
-  <script src="/js/theme.js?v=6bec68c"></script>
-  <script type="module" src="js/avis.js?v=6bec68c"></script>
+  <script src="/js/theme.js?v=508bf91"></script>
+  <script type="module" src="js/avis.js?v=508bf91"></script>
 </body>
 </html>

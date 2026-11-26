@@ -44,6 +44,8 @@ const $ = (id) => document.getElementById(id);
 const DAG = new Intl.DateTimeFormat('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' });
 const KORT = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
 const KL = new Intl.DateTimeFormat('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' });
+const ISO_OSLO = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Oslo' }); // gir YYYY-MM-DD
+const iDag = () => ISO_OSLO.format(new Date());
 const DAGER_MED = 7; // så lenge en uvurdert sak følger med til nye utgaver
 
 let alle = [];              // alle sakene i visningen, også de som var vurdert, se normaliser()
@@ -117,6 +119,7 @@ function render(data, eldre = []) {
   velgSaker();
   $('dag-tittel').textContent = stor(DAG.format(somDato(data.dato)));
   $('ingress').textContent = data.ingress || '';
+  $('idag').hidden = data.dato === iDag();
   $('updated').textContent = data.laget ? 'Laget kl. ' + KL.format(new Date(data.laget)) : '';
   tegnFilter();
   tegnSaker();
@@ -461,6 +464,7 @@ function settNav(forrige, neste) {
     $(id).dataset.dato = dato || '';
   }
 }
+$('idag').addEventListener('click', () => { location.hash = iDag(); });
 for (const id of ['forrige', 'neste']) {
   $(id).addEventListener('click', () => { if ($(id).dataset.dato) location.hash = $(id).dataset.dato; });
 }
@@ -522,7 +526,13 @@ if (lokal) {
       }
       if (!snap || !snap.exists()) {
         $('avis').hidden = true;
-        say(dato ? 'Det finnes ingen avis for ' + DAG.format(somDato(dato)) + '.' : 'Ingen utgaver ennå. Avisa lages hver natt.');
+        say(dato ? 'Det finnes ingen avis for ' + DAG.format(somDato(dato)) + (dato === iDag() ? ' ennå.' : '.') : 'Ingen utgaver ennå. Avisa lages hver natt.');
+        if (dato) { // ellers står man fast: pilene er skjult sammen med avisa
+          const b = el('button', 'btn', 'Til nyeste utgave');
+          b.type = 'button';
+          b.addEventListener('click', () => { location.hash = ''; });
+          $('notice').append(b);
+        }
         return;
       }
       const data = JSON.parse(snap.data().json);
